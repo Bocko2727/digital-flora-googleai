@@ -27,14 +27,6 @@ export interface PlantInput {
 
 export async function seedPlantsIfEmpty() {
   try {
-    const res = await db.select({ value: count() }).from(plants);
-    const currentCount = Number(res[0]?.value || 0);
-    if (currentCount > 0) {
-      console.log(`Cloud SQL already contains ${currentCount} plants.`);
-      return;
-    }
-
-    console.log('Cloud SQL plants table is empty. Seeding from data/review-results.json...');
     const jsonPath = path.resolve(__dirname, '../../data/review-results.json');
     if (!fs.existsSync(jsonPath)) {
       console.warn('review-results.json not found at', jsonPath);
@@ -45,32 +37,49 @@ export async function seedPlantsIfEmpty() {
     const items = data.items || [];
     if (!items.length) return;
 
-    for (const item of items) {
-      const confMap: Record<string, string> = {
-        high: 'Потвърдено (Ботанически архив)',
-        medium: 'Вероятно (Ботанически архив)',
-        low: 'Неопределимо (Ботанически архив)'
-      };
+    const existingRows = await db.select({ photos: plants.photos }).from(plants);
+    const existingPhotos = new Set<string>();
+    existingRows.forEach(r => {
+      try {
+        const arr = JSON.parse(r.photos || '[]');
+        arr.forEach((p: string) => existingPhotos.add(p));
+      } catch (e) {}
+    });
 
-      await db.insert(plants).values({
-        commonName: item.likely_common_name_bg || 'Неопределено растение',
-        latinName: item.likely_scientific_name || 'Неопределен таксон',
-        family: item.family || 'Семейство',
-        photos: JSON.stringify([item.file || 'placeholder.jpg']),
-        confidence: confMap[item.confidence] || item.confidence || 'Вероятно',
-        recognition: item.visible_features || 'Няма допълнителни данни',
-        habitat: 'Ботанически образец от България',
-        lookalikes: item.possible_lookalikes || '-',
-        benefits: 'Ботаническо и флористично значение за биоразнообразието.',
-        risks: item.safety_note || 'Няма регистрирани критични рискове.',
-        uses: 'Хербариен образец и ботаническо наблюдение.',
-        funFact: item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
-        authorEmail: 'digitalflora@botany.bg',
-        authorUid: 'system_botanist'
-      });
+    const confMap: Record<string, string> = {
+      high: 'Потвърдено (Ботанически архив)',
+      medium: 'Вероятно (Ботанически архив)',
+      low: 'Неопределимо (Ботанически архив)'
+    };
+
+    let inserted = 0;
+    for (const item of items) {
+      const photoFile = item.file || 'placeholder.jpg';
+      if (!existingPhotos.has(photoFile)) {
+        await db.insert(plants).values({
+          commonName: item.likely_common_name_bg || 'Неопределено растение',
+          latinName: item.likely_scientific_name || 'Неопределен таксон',
+          family: item.family || 'Семейство',
+          photos: JSON.stringify([photoFile]),
+          confidence: confMap[item.confidence] || item.confidence || 'Вероятно',
+          recognition: item.visible_features || 'Няма допълнителни данни',
+          habitat: item.habitat || 'Ботанически образец от България',
+          lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'),
+          benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
+          risks: item.safety_note || 'Няма регистрирани критични рискове.',
+          uses: item.uses || 'Хербариен образец и ботаническо наблюдение.',
+          funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
+          authorEmail: 'digitalflora@botany.bg',
+          authorUid: 'system_botanist'
+        });
+        existingPhotos.add(photoFile);
+        inserted++;
+      }
     }
 
-    console.log(`Successfully seeded ${items.length} plants into Cloud SQL!`);
+    if (inserted > 0) {
+      console.log(`Successfully synced and seeded ${inserted} new plants into Cloud SQL!`);
+    }
   } catch (err) {
     console.error('Error seeding plants into Cloud SQL:', err);
   }

@@ -1,22 +1,22 @@
+import 'dotenv/config';
 import fs from 'fs';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import { getOrCreateUser, getUsers } from './src/db/users.ts';
-import { seedPlantsIfEmpty, getSqlPlants, insertSqlPlant, updateSqlPlant, deleteSqlPlant } from './src/db/plants.ts';
-import { logDriveImport, getDriveImports } from './src/db/drive.ts';
+import { getOrCreateUser, getUsers } from './src/db/users.js';
+import { seedPlantsIfEmpty, getSqlPlants, insertSqlPlant, updateSqlPlant, deleteSqlPlant } from './src/db/plants.js';
+import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0';
 
-// Initialize Gemini with standard telemetry header and API key resolution
+// Initialize Gemini and Kilo AI with environment keys
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
-const kiloApiKey = process.env.KILO_API_KEY || process.env.KILO_KEY;
-const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/v1';
+const kiloApiKey = process.env.kilo_code || process.env.KILO_CODE || process.env.KILO_API_KEY || process.env.KILO_KEY;
+const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/api/gateway';
 const kiloModel = process.env.KILO_MODEL || 'kilo-auto';
 
 const ai = new GoogleGenAI(apiKey ? {
@@ -37,11 +37,21 @@ const ai = new GoogleGenAI(apiKey ? {
 // Helper for Kilo AI API Gateway (OpenAI compatible format)
 async function generateWithKiloAI(prompt, base64Image, mimeType) {
   if (!kiloApiKey) {
-    throw new Error('KILO_API_KEY не е зададен в системната среда.');
+    throw new Error('kilo_code / KILO_API_KEY не е зададен в системната среда.');
   }
 
-  const imageUrl = `data:${mimeType};base64,${base64Image}`;
-  const response = await fetch(`${kiloBaseUrl}/chat/completions`, {
+  const messages = [
+    {
+      role: 'user',
+      content: base64Image ? [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}` } }
+      ] : prompt
+    }
+  ];
+
+  const baseUrlSanitized = kiloBaseUrl.replace(/\/$/, '');
+  const response = await fetch(`${baseUrlSanitized}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -49,15 +59,7 @@ async function generateWithKiloAI(prompt, base64Image, mimeType) {
     },
     body: JSON.stringify({
       model: kiloModel,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ]
-        }
-      ],
+      messages: messages,
       temperature: 0.2
     })
   });
@@ -78,8 +80,12 @@ app.use(express.static(__dirname));
 
 // Ensure upload directory exists
 const uploadsDir = path.join(__dirname, 'images', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message);
 }
 
 // REST CRUD for Plants (Cloud SQL + JSON fallback)
@@ -102,14 +108,14 @@ app.get(['/api/plants', '/api/sql/plants'], async (req, res) => {
         photos: [item.file || 'placeholder.jpg'],
         confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)',
         recognition: item.visible_features || 'Няма допълнителни данни',
-        habitat: 'Ботанически образец от България',
-        lookalikes: item.possible_lookalikes || '-',
-        benefits: 'Ботаническо и флористично значение за биоразнообразието.',
-        risks: item.safety_note || 'Няма регистрирани критични рискове.',
-        uses: 'Хербариен образец и ботаническо наблюдение.',
-        funFact: item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
+        habitat: item.habitat || 'Ботанически образец от България',
+        lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'),
+        benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
+        risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.',
+        uses: item.uses || 'Хербариен образец и ботаническо наблюдение.',
+        funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
         authorEmail: 'digitalflora@botany.bg',
-        createdAt: new Date().toISOString()
+        createdAt: item.analyzed_at || new Date().toISOString()
       }));
       return res.json(items);
     }
@@ -129,14 +135,14 @@ app.get(['/api/plants', '/api/sql/plants'], async (req, res) => {
           photos: [item.file || 'placeholder.jpg'],
           confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)',
           recognition: item.visible_features || 'Няма допълнителни данни',
-          habitat: 'Ботанически образец от България',
-          lookalikes: item.possible_lookalikes || '-',
-          benefits: 'Ботаническо и флористично значение за биоразнообразието.',
-          risks: item.safety_note || 'Няма регистрирани критични рискове.',
-          uses: 'Хербариен образец и ботаническо наблюдение.',
-          funFact: item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
+          habitat: item.habitat || 'Ботанически образец от България',
+          lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'),
+          benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
+          risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.',
+          uses: item.uses || 'Хербариен образец и ботаническо наблюдение.',
+          funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
           authorEmail: 'digitalflora@botany.bg',
-          createdAt: new Date().toISOString()
+          createdAt: item.analyzed_at || new Date().toISOString()
         }));
         return res.json(items);
       }
@@ -279,8 +285,15 @@ app.post('/api/upload', async (req, res) => {
     // Save image to disk in uploads directory
     const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
     const filePath = path.join(uploadsDir, fileName);
-    fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64'));
-    const relativeUrl = `images/uploads/${fileName}`;
+    let relativeUrl = '';
+    try {
+      fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64'));
+      relativeUrl = `images/uploads/${fileName}`;
+    } catch (e) {
+      console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message);
+      // In a real app we'd upload to GCS/Firebase here, but for now we'll just omit the local URL
+      relativeUrl = '';
+    }
 
     const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{
   "likely_scientific_name": "Latin name",
@@ -415,15 +428,44 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Health checks for Cloud Run & load balancers
+app.get(['/health', '/healthz'], (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, HOST, async () => {
-  console.log(`Server running at http://${HOST}:${PORT}`);
-  try {
-    await seedPlantsIfEmpty();
-  } catch (e) {
-    console.error('Seed error during startup:', e);
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled Express error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal Server Error' });
   }
+});
+
+const HOST = '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Server running at http://${HOST}:${PORT}`);
+  // Run non-blocking seed in background
+  seedPlantsIfEmpty().catch(e => {
+    console.error('Background seed error:', e);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });

@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const firebaseConfig = {
   projectId: "steel-plexus-x1ttq",
@@ -13,6 +14,7 @@ export const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 // Configure Google Provider with Drive & Picker scopes
 export const googleAuthProvider = new GoogleAuthProvider();
@@ -29,4 +31,4 @@ export const setCachedAccessToken = (token) => {
 
 export const getCachedAccessToken = () => cachedAccessToken;
 
-export { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged };
+export { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy };

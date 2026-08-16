@@ -7,6 +7,10 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#285c38">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
+  <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css" />
   <script>
     // Global safe error listener to prevent uncaught third-party script crashes
     window.addEventListener('error', function(e) {
@@ -536,7 +540,7 @@
     <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър</button>
     <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
     <div id="authContainer">
-      <button class="auth-btn" onclick="loginGoogle()">👤 Вход с Google</button>
+      <button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>
     </div>
   </div>
 </header>
@@ -575,6 +579,14 @@
   <div id="loadMoreTrigger"></div>
 </main>
 
+<div id="loginModal" class="modal-overlay" onclick="if(event.target===this) this.style.display='none'" style="display:none; z-index: 2000;">
+  <div class="modal-content" style="max-width: 400px; padding: 2rem; height: auto; display: block; overflow: visible; background: #fff; border-radius: 12px; margin: 10% auto;">
+    <button class="close-btn" onclick="document.getElementById('loginModal').style.display='none'" title="Затвори (Esc)" style="position: absolute; right: 10px; top: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+    <h2 style="text-align:center; margin-bottom: 1rem; color: var(--green);">Вход в системата</h2>
+    <div id="firebaseui-auth-container"></div>
+  </div>
+</div>
+
 <div id="modal" class="modal-overlay" onclick="handleModalOverlayClick(event)">
   <div class="modal-content">
     <button class="close-btn" onclick="closeModal()" title="Затвори (Esc)">×</button>
@@ -583,7 +595,40 @@
 </div>
 
 <script type="module">
-import { auth, googleAuthProvider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setCachedAccessToken, getCachedAccessToken } from './firebase-client.js';
+import { firebaseConfig, auth, db, googleAuthProvider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setCachedAccessToken, getCachedAccessToken, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from './firebase-client.js';
+
+// Setup Compat App for Firebase UI
+if (!window.firebase.apps.length) {
+  window.firebase.initializeApp(firebaseConfig);
+}
+const ui = new window.firebaseui.auth.AuthUI(window.firebase.auth());
+
+window.showFirebaseUILogin = function() {
+  document.getElementById('loginModal').style.display = 'flex';
+  ui.start('#firebaseui-auth-container', {
+    signInFlow: 'popup',
+    signInOptions: [
+      {
+        provider: window.firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+        scopes: [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/drive'
+        ]
+      },
+      window.firebase.auth.EmailAuthProvider.PROVIDER_ID
+    ],
+    callbacks: {
+      signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+        document.getElementById('loginModal').style.display = 'none';
+        if (authResult.credential && authResult.credential.accessToken) {
+          setCachedAccessToken(authResult.credential.accessToken);
+        }
+        return false;
+      }
+    }
+  });
+};
 
 const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
 
@@ -651,7 +696,7 @@ onAuthStateChanged(auth, (user) => {
       <div class="user-profile">
         <img src="${user.photoURL || '/icon.svg'}" class="user-avatar" alt="Avatar">
         <span class="user-name">${user.displayName || user.email.split('@')[0]}</span>
-        <button class="logout-mini" onclick="logoutGoogle()" title="Изход">Изход</button>
+        <button class="logout-mini" onclick="logoutUser()" title="Изход">Изход</button>
       </div>
     `;
     
@@ -667,24 +712,11 @@ onAuthStateChanged(auth, (user) => {
       })
     }).catch(console.warn);
   } else {
-    container.innerHTML = `<button class="auth-btn" onclick="loginGoogle()">👤 Вход с Google</button>`;
+    container.innerHTML = `<button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>`;
   }
 });
 
-window.loginGoogle = async function() {
-  try {
-    const result = await signInWithPopup(auth, googleAuthProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential && credential.accessToken) {
-      setCachedAccessToken(credential.accessToken);
-    }
-  } catch (err) {
-    console.error("Auth Error:", err);
-    alert("Грешка при вход: " + err.message);
-  }
-};
-
-window.logoutGoogle = async function() {
+window.logoutUser = async function() {
   try {
     await signOut(auth);
     setCachedAccessToken(null);
@@ -834,16 +866,8 @@ async function onGooglePickerCallback(data) {
         authorUid: window.currentUser ? window.currentUser.uid : null
       };
 
-      // Save directly to Cloud SQL Database
-      const saveRes = await fetch('/api/plants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pData)
-      });
-      
-      if (!saveRes.ok) {
-        throw new Error('Грешка при запис в базата данни.');
-      }
+      pData.createdAt = serverTimestamp();
+      await addDoc(collection(db, "plants"), pData);
 
       if (status) status.style.display = 'none';
       await loadPlants();
@@ -859,12 +883,15 @@ async function onGooglePickerCallback(data) {
   }
 }
 
-// Load Plants from Cloud SQL / Backend API
+// Load Plants from Firestore
 async function loadPlants(retries = 2) {
   try {
-    const res = await fetch('/api/plants');
-    if (!res.ok) throw new Error('Грешка при четене от сървъра');
-    const dataList = await res.json();
+    const q = query(collection(db, "plants"), orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    const dataList = [];
+    querySnapshot.forEach((docSnapshot) => {
+      dataList.push({ id: docSnapshot.id, ...docSnapshot.data() });
+    });
     
     window.allPlants = [];
     const families = new Set();
@@ -1086,15 +1113,8 @@ window.uploadPlant = async function uploadPlant(event) {
       authorUid: window.currentUser ? window.currentUser.uid : null
     };
     
-    const saveRes = await fetch('/api/plants', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pData)
-    });
-
-    if (!saveRes.ok) {
-      throw new Error('Грешка при запис в базата данни.');
-    }
+    pData.createdAt = serverTimestamp();
+    await addDoc(collection(db, "plants"), pData);
 
     await loadPlants();
     window.openPlant(0);
@@ -1343,13 +1363,7 @@ window.savePlant = async function(id, ev) {
   };
 
   try {
-    const res = await fetch(`/api/plants/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updateData)
-    });
-    
-    if (!res.ok) throw new Error('Грешка при обновяване в базата данни');
+    await updateDoc(doc(db, "plants", id), updateData);
     
     const p = window.filteredPlants[n];
     if (p) {
@@ -1375,8 +1389,7 @@ window.savePlant = async function(id, ev) {
 window.deletePlant = async function(id) {
   if (!confirm('Сигурни ли сте, че искате да изтриете този ботанически запис?')) return;
   try {
-    const res = await fetch(`/api/plants/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Грешка при изтриване от базата данни');
+    await deleteDoc(doc(db, "plants", id));
     closeModal();
     await loadPlants();
   } catch (e) {
@@ -1398,5 +1411,6 @@ if ('serviceWorker' in navigator) {
 // Initial Boot
 loadPlants();
 </script>
+
 </body>
 </html>

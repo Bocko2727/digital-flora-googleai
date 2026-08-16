@@ -1,0 +1,38 @@
+{
+  "schema": {
+    "collections": [
+      {
+        "name": "plants",
+        "description": "Stores records of digital herbarium plants.",
+        "documents": [
+          {
+            "fields": [
+              { "name": "commonName", "type": "string", "description": "Българско име на растението" },
+              { "name": "latinName", "type": "string", "description": "Латинско име на растението" },
+              { "name": "family", "type": "string", "description": "Семейство" },
+              { "name": "photos", "type": "array", "description": "Списък със снимки (имена на файлове)" },
+              { "name": "confidence", "type": "string", "description": "Статус на сигурност на определянето" },
+              { "name": "recognition", "type": "string", "description": "Разпознаване" },
+              { "name": "habitat", "type": "string", "description": "Местообитание и разпространение" },
+              { "name": "lookalikes", "type": "string", "description": "Възможни двойници" },
+              { "name": "benefits", "type": "string", "description": "Ползи" },
+              { "name": "risks", "type": "string", "description": "Вреди и рискове" },
+              { "name": "uses", "type": "string", "description": "Употреби" },
+              { "name": "funFact", "type": "string", "description": "Любопитен факт" },
+              { "name": "createdAt", "type": "timestamp", "description": "Кога е добавено" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "securityRules": {
+    "strategy": "public_read_admin_write",
+    "collections": {
+      "plants": {
+        "read": "true",
+        "write": "request.auth != null"
+      }
+    }
+  }
+}

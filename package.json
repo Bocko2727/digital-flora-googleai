@@ -1,0 +1,25 @@
+{
+  "name": "digitalflora",
+  "version": "1.0.0",
+  "description": "Дигитален ботанически хербарий и енциклопедия на флората",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "echo 'No build step required'",
+    "lint": "node --check server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.17.1",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "express": "^4.21.2",
+    "firebase": "^12.17.1",
+    "multer": "^2.2.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.21.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}

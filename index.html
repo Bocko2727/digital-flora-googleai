@@ -1,0 +1,1403 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Дигитален ботанически хербарий</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#285c38">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script>
+    // Global safe error listener to prevent uncaught third-party script crashes
+    window.addEventListener('error', function(e) {
+      if (e.message && (e.message.includes('Script error') || e.message.includes('ResizeObserver'))) {
+        console.warn('Caught non-fatal script warning:', e);
+        return true;
+      }
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      console.warn('Caught unhandled promise warning:', e.reason);
+    });
+  </script>
+  <style>
+    :root {
+      --green: #285c38;
+      --green-dark: #1b4026;
+      --green-light: #408c58;
+      --paper: #fbf8f1;
+      --paper-card: #ffffff;
+      --ink: #1c2a20;
+      --line: #d8d1c3;
+      --muted: #667067;
+      --amber: #8a4c00;
+      --red: #8a2626;
+      --blue: #1e40af;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #edf1eb;
+      color: var(--ink);
+      font: 16px/1.58 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background: var(--green);
+      color: #fff;
+      padding: 18px max(18px, calc((100vw - 1240px)/2));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+    }
+    .header-text h1 { margin: 0; font: 700 26px Georgia, serif; letter-spacing: -0.5px; }
+    .header-text p { margin: 2px 0 0; opacity: 0.88; font-size: 14px; }
+    
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      transition: all 0.2s;
+    }
+    .upload-btn {
+      background: #fff;
+      color: var(--green);
+    }
+    .upload-btn:hover { background: #f0f7f1; transform: translateY(-1px); }
+    
+    .drive-btn {
+      background: #3b82f6;
+      color: #fff;
+    }
+    .drive-btn:hover { background: #2563eb; transform: translateY(-1px); }
+    
+    /* Auth Profile & Button */
+    .auth-btn {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      padding: 9px 15px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .auth-btn:hover { background: rgba(255,255,255,0.25); }
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: rgba(255,255,255,0.12);
+      padding: 5px 12px 5px 6px;
+      border-radius: 30px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid #fff;
+    }
+    .user-name { font-size: 13px; font-weight: 600; }
+    .logout-mini {
+      background: none;
+      border: none;
+      color: #fca5a5;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 4px;
+      text-decoration: underline;
+    }
+    
+    /* Controls toolbar */
+    .controls {
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+      padding: 14px max(18px, calc((100vw - 1240px)/2));
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .controls input, .controls select {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 14px;
+      flex: 1;
+      min-width: 180px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .controls input:focus, .controls select:focus { border-color: var(--green); }
+    .stats-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    
+    main {
+      width: 100%;
+      max-width: 1240px;
+      margin: 25px auto 40px;
+      padding: 0 18px;
+      flex: 1;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 22px;
+    }
+    
+    .plant-card {
+      background: var(--paper-card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 4px 12px #23331b0d;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .plant-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px #23331b1a;
+    }
+    .plant-card-img {
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      background: #dde4dc;
+    }
+    .plant-card-content {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .plant-card-title {
+      font: 700 19px Georgia, serif;
+      margin: 0 0 4px;
+      line-height: 1.25;
+      color: var(--ink);
+    }
+    .plant-card-latin {
+      font: italic 14px Georgia, serif;
+      color: var(--green);
+      margin: 0 0 10px;
+    }
+    .plant-card-meta {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .plant-card-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #edf4ed;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.prob { background: #fff0d9; color: var(--amber); }
+    .badge.unc { background: #fde3e3; color: var(--red); }
+    
+    /* Pagination / Load more */
+    .load-more-wrap {
+      text-align: center;
+      margin: 35px 0 20px;
+    }
+    .load-more-btn {
+      background: var(--paper);
+      color: var(--green);
+      border: 1.5px solid var(--green);
+      border-radius: 30px;
+      padding: 12px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .load-more-btn:hover {
+      background: var(--green);
+      color: #fff;
+    }
+    
+    /* Highly Robust Scrollable Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(14, 24, 16, 0.84);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 24px;
+      backdrop-filter: blur(5px);
+    }
+    .modal-overlay.open { display: flex; }
+    
+    .modal-content {
+      background: var(--paper);
+      width: 100%;
+      max-width: 1060px;
+      height: 88vh;
+      max-height: 860px;
+      border-radius: 16px;
+      position: relative;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .close-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 50;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: var(--ink);
+      transition: transform 0.2s, background 0.2s;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    .close-btn:hover { background: #f0f7f1; transform: scale(1.08); }
+    
+    #view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 42%) 1fr;
+      height: 100%;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .photo-column {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      background: #111a14;
+      position: relative;
+    }
+    .photo-wrap {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111a14;
+    }
+    .photo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      position: absolute;
+      top: 0; left: 0;
+    }
+    .gallery {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      background: var(--paper);
+      flex-shrink: 0;
+    }
+    .gallery button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .gallery span { font-size: 13px; color: var(--muted); }
+    
+    .info {
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      padding: 28px 34px 60px;
+    }
+    .info::-webkit-scrollbar { width: 8px; }
+    .info::-webkit-scrollbar-track { background: #eef2ec; }
+    .info::-webkit-scrollbar-thumb { background: #9db29e; border-radius: 4px; }
+    .info::-webkit-scrollbar-thumb:hover { background: #738f74; }
+    
+    .latin { font: italic 19px Georgia, serif; color: var(--green); margin: 2px 0 14px; }
+    h2 { font: 700 28px Georgia, serif; margin: 0; color: var(--ink); }
+    h3 { font: 700 17px Georgia, serif; color: var(--green); margin: 20px 0 6px; }
+    
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      border-block: 1px solid var(--line);
+      padding: 12px 0;
+      margin: 14px 0;
+    }
+    .meta b { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+    
+    .note {
+      margin-top: 18px;
+      padding: 12px 14px;
+      background: #fff3dc;
+      border-left: 4px solid #d88b18;
+      border-radius: 7px;
+      font-size: 13px;
+    }
+    .sources {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    
+    .qa-box {
+      margin-top: 22px;
+      padding: 16px;
+      background: #f0f7ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #3b82f6;
+      border-radius: 8px;
+    }
+    
+    #uploadStatus {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff0d9;
+      color: var(--amber);
+      padding: 12px 28px;
+      border-radius: 30px;
+      font-weight: 700;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      z-index: 2000;
+      display: none;
+      border: 1px solid #f6d194;
+    }
+
+    /* Edit form input styling */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-weight: 700; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--green); }
+
+    /* Responsive Mobile & Tablet View */
+    @media (max-width: 820px) {
+      .modal-overlay {
+        padding: 0;
+        display: none;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .modal-overlay.open { display: block; }
+      .modal-content {
+        min-height: 100vh;
+        height: auto;
+        max-height: none;
+        border-radius: 0;
+        display: block;
+        overflow: visible;
+      }
+      #view {
+        height: auto;
+        min-height: 100%;
+        display: block;
+        overflow: visible;
+      }
+      .layout {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        min-height: 100%;
+        overflow: visible;
+      }
+      .photo-column {
+        height: 330px;
+        min-height: 330px;
+        flex-shrink: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .info {
+        height: auto;
+        min-height: auto;
+        overflow: visible !important;
+        padding: 22px 20px 90px;
+      }
+      .close-btn {
+        top: 14px;
+        right: 14px;
+        position: fixed;
+        background: #ffffff;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+      }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <img src="/icon.svg" class="header-logo" alt="Дигитална Флора">
+    <div class="header-text">
+      <h1>Дигитален ботанически хербарий</h1>
+      <p>Енциклопедия на растителните видове с AI разпознаване, Cloud SQL & Google Drive</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър</button>
+    <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
+    <div id="authContainer">
+      <button class="auth-btn" onclick="loginGoogle()">👤 Вход с Google</button>
+    </div>
+  </div>
+</header>
+
+<input type="file" id="uploadInput" accept="image/*" style="display:none" onchange="uploadPlant(event)">
+<div id="uploadStatus">⏳ AI ботаникът анализира и съхранява снимката...</div>
+
+<div class="controls">
+  <input type="text" id="searchInput" placeholder="🔍 Търси по българско или латинско име..." oninput="onFilterChange()">
+  <select id="familyFilter" onchange="onFilterChange()">
+    <option value="">Всички семейства</option>
+  </select>
+  <select id="confidenceFilter" onchange="onFilterChange()">
+    <option value="">Всички статуси</option>
+    <option value="Потвърдено">Потвърдено</option>
+    <option value="Вероятно">Вероятно</option>
+    <option value="Неопределимо">Неопределимо</option>
+  </select>
+  <select id="sortFilter" onchange="onFilterChange()">
+    <option value="newest">Най-нови първо</option>
+    <option value="az">Азбучен ред (А-Я)</option>
+  </select>
+  <div class="stats-bar">
+    <span id="counterText">Зареждане на образец...</span>
+    <span id="pwaStatus" style="font-size:12px; color:var(--green)">⚡ Cloud SQL & Google Drive Активни</span>
+  </div>
+</div>
+
+<main>
+  <div id="grid" class="grid">
+    <div style="text-align:center;grid-column:1/-1;padding:50px;color:var(--muted)">Зареждане на ботаническите данни...</div>
+  </div>
+  <div class="load-more-wrap" id="loadMoreWrap" style="display:none">
+    <button class="load-more-btn" onclick="loadMorePlants()">Зареди още растения 🌿</button>
+  </div>
+  <div id="loadMoreTrigger"></div>
+</main>
+
+<div id="modal" class="modal-overlay" onclick="handleModalOverlayClick(event)">
+  <div class="modal-content">
+    <button class="close-btn" onclick="closeModal()" title="Затвори (Esc)">×</button>
+    <div id="view"></div>
+  </div>
+</div>
+
+<script type="module">
+import { auth, googleAuthProvider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setCachedAccessToken, getCachedAccessToken } from './firebase-client.js';
+
+const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
+
+window.allPlants = [];
+window.filteredPlants = [];
+window.displayedCount = 0;
+const PAGE_SIZE = 16;
+
+let n = 0, photo = 0;
+window.currentUser = null;
+
+// Dynamic Google Picker Loader Helper
+let pickerApiLoaded = false;
+async function loadGooglePickerApi() {
+  if (window.google && window.google.picker) {
+    pickerApiLoaded = true;
+    return true;
+  }
+  if (!window.gapi) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Неуспешно зареждане на Google API'));
+      document.head.appendChild(script);
+    });
+  }
+  return new Promise((resolve) => {
+    window.gapi.load('picker', () => {
+      pickerApiLoaded = true;
+      resolve(true);
+    });
+  });
+}
+
+// Badge helper
+const sc = s => (s && s.startsWith('Потвърдено')) ? 'badge' : (s && s.startsWith('Неопределимо')) ? 'badge unc' : 'badge prob';
+
+// Modal click handler
+window.handleModalOverlayClick = function(event) {
+  if (event && event.target && event.target.id === 'modal') {
+    closeModal();
+  }
+};
+
+// Forward wheel scroll from anywhere inside modal content to the .info scroll container
+document.addEventListener('wheel', (e) => {
+  const modal = document.getElementById('modal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const info = document.querySelector('.info');
+  if (!info) return;
+  if (modal.contains(e.target) && !info.contains(e.target)) {
+    info.scrollTop += e.deltaY;
+  }
+}, { passive: true });
+
+// Track Auth State
+onAuthStateChanged(auth, (user) => {
+  window.currentUser = user;
+  const container = document.getElementById('authContainer');
+  if (!container) return;
+  if (user) {
+    container.innerHTML = `
+      <div class="user-profile">
+        <img src="${user.photoURL || '/icon.svg'}" class="user-avatar" alt="Avatar">
+        <span class="user-name">${user.displayName || user.email.split('@')[0]}</span>
+        <button class="logout-mini" onclick="logoutGoogle()" title="Изход">Изход</button>
+      </div>
+    `;
+    
+    // Sync user with Cloud SQL database
+    fetch('/api/users/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoUrl: user.photoURL
+      })
+    }).catch(console.warn);
+  } else {
+    container.innerHTML = `<button class="auth-btn" onclick="loginGoogle()">👤 Вход с Google</button>`;
+  }
+});
+
+window.loginGoogle = async function() {
+  try {
+    const result = await signInWithPopup(auth, googleAuthProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential && credential.accessToken) {
+      setCachedAccessToken(credential.accessToken);
+    }
+  } catch (err) {
+    console.error("Auth Error:", err);
+    alert("Грешка при вход: " + err.message);
+  }
+};
+
+window.logoutGoogle = async function() {
+  try {
+    await signOut(auth);
+    setCachedAccessToken(null);
+  } catch (err) {
+    console.error("SignOut Error:", err);
+  }
+};
+
+window.triggerUpload = function() {
+  const inp = document.getElementById('uploadInput');
+  if (inp) inp.click();
+};
+
+// Google Picker Integration
+window.openGooglePicker = async function() {
+  if (!window.currentUser) {
+    const shouldLogin = confirm("За да изберете снимка от Google Drive, е необходимо да влезете с вашия Google акаунт. Искате ли да влезете сега?");
+    if (shouldLogin) {
+      await window.loginGoogle();
+    }
+    if (!window.currentUser) return;
+  }
+
+  let token = getCachedAccessToken();
+  if (!token) {
+    await window.loginGoogle();
+    token = getCachedAccessToken();
+  }
+
+  if (!token) {
+    alert("Липсва достъп до Google Drive. Моля, влезте отново.");
+    return;
+  }
+
+  try {
+    await loadGooglePickerApi();
+  } catch (e) {
+    alert("Google Picker API не можа да се зареди: " + e.message);
+    return;
+  }
+
+  if (!window.google || !window.google.picker) {
+    alert("Google Picker API се зарежда... Моля, опитайте пак след няколко секунди.");
+    return;
+  }
+
+  const pickerOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0)
+    ? window.location.ancestorOrigins[window.location.ancestorOrigins.length - 1]
+    : window.location.origin;
+
+  const docsView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS_IMAGES)
+    .setMimeTypes("image/jpeg,image/png,image/webp,image/jpg,image/gif");
+
+  const picker = new window.google.picker.PickerBuilder()
+    .addView(docsView)
+    .addView(window.google.picker.ViewId.DOCS)
+    .setOAuthToken(token)
+    .setCallback(onGooglePickerCallback)
+    .setOrigin(pickerOrigin)
+    .setTitle("🌿 Избери снимка на растение от Google Drive")
+    .build();
+
+  picker.setVisible(true);
+};
+
+// Google Picker Selection Handler
+async function onGooglePickerCallback(data) {
+  if (data && data.action === window.google.picker.Action.PICKED) {
+    const file = data.docs[0];
+    const fileId = file.id;
+    const fileName = file.name;
+    const mimeType = file.mimeType || 'image/jpeg';
+
+    const status = document.getElementById('uploadStatus');
+    if (status) {
+      status.style.display = 'block';
+      status.innerText = `⏳ Изтегляне на "${fileName}" от Google Drive и ботанически AI анализ...`;
+    }
+
+    try {
+      const token = getCachedAccessToken();
+      const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!driveRes.ok) {
+        throw new Error(`Грешка при четене от Google Drive (${driveRes.status})`);
+      }
+
+      const blob = await driveRes.blob();
+      const base64Data = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+
+      // AI Analysis
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Data })
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Грешка при анализа на снимката.');
+      }
+      
+      const result = await res.json();
+      const record = result.record;
+      const storedImageUrl = result.imageUrl || result.base64;
+
+      // Log import into Cloud SQL PostgreSQL
+      fetch('/api/drive/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId,
+          fileName,
+          mimeType,
+          userUid: window.currentUser ? window.currentUser.uid : null
+        })
+      }).catch(console.warn);
+
+      const pData = {
+        commonName: record.likely_common_name_bg || 'Неопределено растение',
+        latinName: record.likely_scientific_name || 'Неопределен таксон',
+        family: record.family || 'Семейство',
+        photos: [storedImageUrl],
+        confidence: (() => {
+          if (typeof record.confidence === 'number') {
+            const pct = Math.round(record.confidence * 100) + '%';
+            if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
+            if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
+            return 'Неопределимо (AI ' + pct + ')';
+          }
+          return 'Вероятно (Google Drive)';
+        })(),
+        recognition: record.visible_features || ('Импортирано от Google Drive: ' + fileName),
+        habitat: 'Google Drive образец',
+        lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
+        benefits: 'Ботаническо наблюдение',
+        risks: record.safety_note || 'Внимание',
+        uses: 'Импортирано от Google Drive',
+        funFact: `Импортиран файл от Google Drive: ${fileName}`,
+        authorEmail: window.currentUser ? window.currentUser.email : 'Google Drive потребител',
+        authorUid: window.currentUser ? window.currentUser.uid : null
+      };
+
+      // Save directly to Cloud SQL Database
+      const saveRes = await fetch('/api/plants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pData)
+      });
+      
+      if (!saveRes.ok) {
+        throw new Error('Грешка при запис в базата данни.');
+      }
+
+      if (status) status.style.display = 'none';
+      await loadPlants();
+      window.openPlant(0);
+
+    } catch (err) {
+      if (status) {
+        status.innerText = '❌ Грешка: ' + err.message;
+        setTimeout(() => { status.style.display = 'none'; }, 6000);
+      }
+      console.error(err);
+    }
+  }
+}
+
+// Load Plants from Cloud SQL / Backend API
+async function loadPlants(retries = 2) {
+  try {
+    const res = await fetch('/api/plants');
+    if (!res.ok) throw new Error('Грешка при четене от сървъра');
+    const dataList = await res.json();
+    
+    window.allPlants = [];
+    const families = new Set();
+    
+    (dataList || []).forEach((data) => {
+      window.allPlants.push({
+        id: data.id || `plant_${Math.random()}`,
+        commonName: data.commonName || 'Неопределено растение',
+        latinName: data.latinName || '',
+        family: data.family || '',
+        photos: Array.isArray(data.photos) ? data.photos : [data.photos || 'placeholder.jpg'],
+        confidence: data.confidence || 'Вероятно',
+        recognition: data.recognition || 'Няма данни',
+        habitat: data.habitat || '-',
+        lookalikes: data.lookalikes || '-',
+        benefits: data.benefits || '-',
+        risks: data.risks || '-',
+        uses: data.uses || '-',
+        funFact: data.funFact || '-',
+        author: data.authorEmail || ''
+      });
+      if (data.family) {
+        families.add(data.family.replace(/\s*\(.*?\)\s*/g, '').trim());
+      }
+    });
+    
+    const famSelect = document.getElementById('familyFilter');
+    if (famSelect) {
+      famSelect.innerHTML = '<option value="">Всички семейства</option>';
+      Array.from(families).sort().forEach(f => {
+        if (f) famSelect.innerHTML += `<option value="${f}">${f}</option>`;
+      });
+    }
+    
+    onFilterChange();
+  } catch (err) {
+    console.warn("Plants fetch attempt failed:", err);
+    if (retries > 0) {
+      setTimeout(() => loadPlants(retries - 1), 1000);
+    } else {
+      const grid = document.getElementById('grid');
+      if (grid) {
+        grid.innerHTML = `
+          <div style="text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)">
+            <p>Възникна временна пауза при свързване със сървъра.</p>
+            <button onclick="location.reload()" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
+          </div>
+        `;
+      }
+    }
+  }
+}
+
+window.onFilterChange = function() {
+  const searchEl = document.getElementById('searchInput');
+  const famEl = document.getElementById('familyFilter');
+  const confEl = document.getElementById('confidenceFilter');
+  const sortEl = document.getElementById('sortFilter');
+
+  const q = (searchEl ? searchEl.value : '').toLowerCase().trim();
+  const fam = (famEl ? famEl.value : '').toLowerCase();
+  const conf = confEl ? confEl.value : '';
+  const sort = sortEl ? sortEl.value : 'newest';
+  
+  window.filteredPlants = window.allPlants.filter(p => {
+    const textMatch = p.commonName.toLowerCase().includes(q) || p.latinName.toLowerCase().includes(q);
+    const famMatch = fam === '' || p.family.toLowerCase().includes(fam);
+    const confMatch = conf === '' || p.confidence.startsWith(conf);
+    return textMatch && famMatch && confMatch;
+  });
+  
+  if (sort === 'az') {
+    window.filteredPlants.sort((a, b) => a.commonName.localeCompare(b.commonName, 'bg'));
+  }
+  
+  window.displayedCount = 0;
+  const grid = document.getElementById('grid');
+  if (grid) grid.innerHTML = '';
+  loadMorePlants();
+};
+
+window.loadMorePlants = function() {
+  const grid = document.getElementById('grid');
+  if (!grid) return;
+  const start = window.displayedCount;
+  const end = Math.min(start + PAGE_SIZE, window.filteredPlants.length);
+  
+  const counterText = document.getElementById('counterText');
+  const loadMoreWrap = document.getElementById('loadMoreWrap');
+
+  if (window.filteredPlants.length === 0) {
+    grid.innerHTML = '<div style="text-align:center;grid-column:1/-1;padding:50px;color:var(--muted)">Няма намерени растения по тези критерии.</div>';
+    if (counterText) counterText.innerText = `Показани 0 от 0 образеца`;
+    if (loadMoreWrap) loadMoreWrap.style.display = 'none';
+    return;
+  }
+  
+  const chunk = window.filteredPlants.slice(start, end);
+  const cardsHtml = chunk.map((p, idx) => {
+    const globalIdx = start + idx;
+    const firstPhoto = p.photos[0] || '';
+    const imgPath = firstPhoto.includes('/') ? firstPhoto : 'images/' + firstPhoto;
+    return `
+      <div class="plant-card" onclick="openPlant(${globalIdx})">
+        <img class="plant-card-img" src="${imgPath}" alt="${p.commonName}" loading="lazy" onerror="this.src='/icon.svg'">
+        <div class="plant-card-content">
+          <h3 class="plant-card-title">${p.commonName}</h3>
+          <div class="plant-card-latin">${p.latinName}</div>
+          <div class="plant-card-meta">📁 ${p.family || 'Непознато семейство'}</div>
+          <div class="plant-card-footer">
+            <span class="${sc(p.confidence)}">${(p.confidence || '').split('—')[0].trim()}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  grid.insertAdjacentHTML('beforeend', cardsHtml);
+  window.displayedCount = end;
+  
+  if (counterText) counterText.innerText = `Показани ${window.displayedCount} от ${window.filteredPlants.length} образеца (Общо в хербария: ${window.allPlants.length})`;
+  if (loadMoreWrap) loadMoreWrap.style.display = (window.displayedCount < window.filteredPlants.length) ? 'block' : 'none';
+};
+
+// Intersection Observer for Infinite Scroll
+const loadTrigger = document.getElementById('loadMoreTrigger');
+if (loadTrigger) {
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && window.displayedCount < window.filteredPlants.length) {
+      loadMorePlants();
+    }
+  }, { rootMargin: '200px' });
+  observer.observe(loadTrigger);
+}
+
+// Upload Plant Feature
+window.uploadPlant = async function uploadPlant(event) {
+  const file = event && event.target && event.target.files ? event.target.files[0] : null;
+  if (!file) return;
+  
+  const status = document.getElementById('uploadStatus');
+  if (status) {
+    status.style.display = 'block';
+    status.innerText = '⏳ AI ботаникът анализира и съхранява снимката...';
+  }
+  
+  try {
+    const base64String = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const max_size = 900;
+          
+          if (width > height) {
+            if (width > max_size) {
+              height *= max_size / width;
+              width = max_size;
+            }
+          } else {
+            if (height > max_size) {
+              width *= max_size / height;
+              height = max_size;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64String })
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Грешка при анализа на снимката.');
+    }
+    
+    const result = await res.json();
+    if (status) status.style.display = 'none';
+    
+    const record = result.record;
+    const storedImageUrl = result.imageUrl || result.base64;
+    
+    const pData = {
+      commonName: record.likely_common_name_bg || 'Неопределено растение',
+      latinName: record.likely_scientific_name || 'Неопределен таксон',
+      family: record.family || 'Семейство',
+      photos: [storedImageUrl],
+      confidence: (() => {
+        if (typeof record.confidence === 'number') {
+          const pct = Math.round(record.confidence * 100) + '%';
+          if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
+          if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
+          return 'Неопределимо (AI ' + pct + ')';
+        }
+        return 'Вероятно (AI Анализ)';
+      })(),
+      recognition: record.visible_features || 'Няма данни',
+      habitat: 'Автоматично разпознато местообитание',
+      lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
+      benefits: 'Потенциална екологична роля',
+      risks: record.safety_note || 'Внимание',
+      uses: 'AI фотографско наблюдение',
+      funFact: Array.isArray(record.additional_photos_needed) ? record.additional_photos_needed.join(', ') : (record.additional_photos_needed || '-'),
+      authorEmail: window.currentUser ? window.currentUser.email : 'Анонимен ботаник',
+      authorUid: window.currentUser ? window.currentUser.uid : null
+    };
+    
+    const saveRes = await fetch('/api/plants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pData)
+    });
+
+    if (!saveRes.ok) {
+      throw new Error('Грешка при запис в базата данни.');
+    }
+
+    await loadPlants();
+    window.openPlant(0);
+    
+  } catch (err) {
+    if (status) {
+      status.innerText = '❌ Грешка: ' + err.message;
+      setTimeout(() => { status.style.display = 'none'; }, 6000);
+    }
+    console.error(err);
+  }
+};
+
+// Modal functions
+window.openPlant = function(idx) {
+  n = idx;
+  photo = 0;
+  drawModal();
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.add('open');
+};
+
+window.closeModal = function() {
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.remove('open');
+};
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+window.change = function(d) {
+  const p = window.filteredPlants[n];
+  if (!p) return;
+  photo = (photo + d + p.photos.length) % p.photos.length;
+  drawModal();
+};
+
+window.drawModal = function() {
+  const p = window.filteredPlants[n];
+  if (!p) return;
+  const a = p.photos;
+  const multi = a.length > 1;
+  const curPhoto = a[photo] || '';
+  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
+  
+  const viewEl = document.getElementById('view');
+  if (!viewEl) return;
+
+  viewEl.innerHTML = `
+    <article class="layout">
+      <div class="photo-column">
+        <div class="photo-wrap">
+          <img class="photo" src="${imgPath}" alt="${p.commonName}" onerror="this.src='/icon.svg'">
+        </div>
+        ${multi ? `
+          <div class="gallery">
+            <button onclick="change(-1)">← Предишна</button>
+            <span>${photo + 1} от ${a.length}</span>
+            <button onclick="change(1)">Следваща →</button>
+          </div>
+        ` : ''}
+      </div>
+      <div class="info">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <h2>${p.commonName}</h2>
+          <div style="display:flex; gap:8px;">
+            <button onclick="editPlant()" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
+            <button onclick="deletePlant('${p.id}')" style="background:#fde3e3; color:#8a2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
+          </div>
+        </div>
+        <div class="latin">${p.latinName}</div>
+        <span class="${sc(p.confidence)}">${p.confidence}</span>
+        
+        <div class="meta">
+          <div><b>Семейство</b>${p.family || 'Неизвестно'}</div>
+          <div><b>Статус</b>Наблюдаван образец</div>
+        </div>
+        
+        <h3>Разпознаване (диагностични белези)</h3>
+        <p>${p.recognition}</p>
+        <p><b>Местообитание и разпространение:</b> ${p.habitat}</p>
+        <p><b>Възможни двойници:</b> ${p.lookalikes}</p>
+        
+        <h3>Ползи и екологична роля</h3>
+        <p>${p.benefits}</p>
+        
+        <h3>Вреди и рискове (токсичност)</h3>
+        <p>${p.risks}</p>
+        
+        <h3>Традиционни и съвременни употреби</h3>
+        <p>${p.uses}</p>
+        
+        <h3>Любопитен факт</h3>
+        <p>${p.funFact}</p>
+        
+        <div class="note">
+          <b>Забележка за точност:</b> При „Вероятно“ и „Неопределимо“ липсват един или повече диагностични белези. Не използвай записа за ядливост, самолечение или бране от природата.
+        </div>
+        <div class="sources"><b>Източници:</b> ${src}</div>
+        
+        <div class="qa-box">
+          <h3 style="margin:0 0 4px 0; color:#1e40af; font-size:15px;">🔍 Интерактивен QA Контрол</h3>
+          <p style="font-size:13px; margin:0 0 10px 0; color:#475569;">Попитай AI ботаника дали снимката отговаря на името.</p>
+          <button onclick="runQA()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px;">Извърши AI верификация</button>
+          <div id="qa-result" style="margin-top:10px; font-weight:600; font-size:14px; white-space:pre-wrap;"></div>
+        </div>
+      </div>
+    </article>
+  `;
+};
+
+// QA Verification
+window.runQA = async function() {
+  const p = window.filteredPlants[n];
+  const curPhoto = p.photos[photo] || '';
+  const filename = curPhoto.startsWith('data:image') ? curPhoto : curPhoto.split('/').pop();
+  const claimedName = p.commonName;
+  const latinName = p.latinName;
+  
+  const resDiv = document.getElementById('qa-result');
+  if (!resDiv) return;
+  resDiv.innerHTML = '⏳ AI ботаникът анализира... Моля, изчакайте.';
+  resDiv.style.color = '#d97706';
+  
+  try {
+    const res = await fetch('/api/qa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, claimedName, latinName })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Грешка при проверката');
+    
+    const v = data.verdict;
+    if (v.startsWith('YES') || v.startsWith('ДА') || v.includes('YES')) {
+      resDiv.style.color = '#15803d';
+    } else {
+      resDiv.style.color = '#b91c1c';
+    }
+    resDiv.innerText = v;
+  } catch (err) {
+    resDiv.style.color = '#b91c1c';
+    resDiv.innerText = '❌ ' + err.message;
+  }
+};
+
+// Edit Plant Modal Form
+window.editPlant = function() {
+  const p = window.filteredPlants[n];
+  const curPhoto = p.photos[photo] || '';
+  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
+  
+  const viewEl = document.getElementById('view');
+  if (!viewEl) return;
+
+  viewEl.innerHTML = `
+    <article class="layout">
+      <div class="photo-column">
+        <div class="photo-wrap">
+          <img class="photo" src="${imgPath}" alt="${p.commonName}" onerror="this.src='/icon.svg'">
+        </div>
+      </div>
+      <div class="info">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h2 style="margin:0;">Редакция на образец</h2>
+          <button onclick="drawModal()" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Отказ</button>
+        </div>
+        
+        <div class="form-group">
+          <label>Българско име</label>
+          <input type="text" id="e_cname" value="${p.commonName.replace(/"/g, '&quot;')}">
+        </div>
+        <div class="form-group">
+          <label>Латинско име</label>
+          <input type="text" id="e_lname" value="${p.latinName.replace(/"/g, '&quot;')}">
+        </div>
+        <div class="form-group">
+          <label>Семейство</label>
+          <input type="text" id="e_fam" value="${p.family.replace(/"/g, '&quot;')}">
+        </div>
+        <div class="form-group">
+          <label>Статус на сигурност</label>
+          <input type="text" id="e_conf" value="${p.confidence.replace(/"/g, '&quot;')}">
+        </div>
+        <div class="form-group">
+          <label>Разпознаване (диагностични белези)</label>
+          <textarea id="e_rec" rows="3">${p.recognition}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Местообитание и разпространение</label>
+          <textarea id="e_hab" rows="2">${p.habitat}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Възможни двойници</label>
+          <input type="text" id="e_look" value="${p.lookalikes.replace(/"/g, '&quot;')}">
+        </div>
+        <div class="form-group">
+          <label>Ползи / Екологична роля</label>
+          <textarea id="e_ben" rows="2">${p.benefits}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Вреди и рискове (токсичност)</label>
+          <textarea id="e_risk" rows="2">${p.risks}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Любопитен факт</label>
+          <textarea id="e_fact" rows="2">${p.funFact}</textarea>
+        </div>
+        
+        <button onclick="savePlant('${p.id}', event)" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
+      </div>
+    </article>
+  `;
+};
+
+window.savePlant = async function(id, ev) {
+  const btn = ev ? ev.currentTarget || ev.target : null;
+  if (btn) {
+    btn.innerText = 'Запазване...';
+    btn.disabled = true;
+  }
+  
+  const cname = document.getElementById('e_cname') ? document.getElementById('e_cname').value : '';
+  const lname = document.getElementById('e_lname') ? document.getElementById('e_lname').value : '';
+  const fam = document.getElementById('e_fam') ? document.getElementById('e_fam').value : '';
+  const conf = document.getElementById('e_conf') ? document.getElementById('e_conf').value : '';
+  const rec = document.getElementById('e_rec') ? document.getElementById('e_rec').value : '';
+  const hab = document.getElementById('e_hab') ? document.getElementById('e_hab').value : '';
+  const look = document.getElementById('e_look') ? document.getElementById('e_look').value : '';
+  const ben = document.getElementById('e_ben') ? document.getElementById('e_ben').value : '';
+  const risk = document.getElementById('e_risk') ? document.getElementById('e_risk').value : '';
+  const fact = document.getElementById('e_fact') ? document.getElementById('e_fact').value : '';
+  
+  const updateData = {
+    commonName: cname,
+    latinName: lname,
+    family: fam,
+    confidence: conf,
+    recognition: rec,
+    habitat: hab,
+    lookalikes: look,
+    benefits: ben,
+    risks: risk,
+    funFact: fact
+  };
+
+  try {
+    const res = await fetch(`/api/plants/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!res.ok) throw new Error('Грешка при обновяване в базата данни');
+    
+    const p = window.filteredPlants[n];
+    if (p) {
+      Object.assign(p, updateData);
+    }
+    
+    drawModal();
+    const cards = document.querySelectorAll('.plant-card');
+    if (cards[n]) {
+      cards[n].querySelector('.plant-card-title').innerText = cname;
+      cards[n].querySelector('.plant-card-latin').innerText = lname;
+      cards[n].querySelector('.plant-card-meta').innerText = '📁 ' + fam;
+    }
+  } catch (e) {
+    alert("Грешка при запазване: " + e.message);
+    if (btn) {
+      btn.innerText = '💾 Запази промените';
+      btn.disabled = false;
+    }
+  }
+};
+
+window.deletePlant = async function(id) {
+  if (!confirm('Сигурни ли сте, че искате да изтриете този ботанически запис?')) return;
+  try {
+    const res = await fetch(`/api/plants/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Грешка при изтриване от базата данни');
+    closeModal();
+    await loadPlants();
+  } catch (e) {
+    alert("Грешка при изтриване: " + e.message);
+  }
+};
+
+// PWA Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      console.log('PWA Service Worker registered:', reg.scope);
+    }).catch((err) => {
+      console.warn('Service Worker registration skipped:', err);
+    });
+  });
+}
+
+// Initial Boot
+loadPlants();
+</script>
+
+</body>
+</html>

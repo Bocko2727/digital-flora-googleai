@@ -1,0 +1,67 @@
+name: Gemini review batches
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: Images per batch
+        required: true
+        default: '5'
+        type: choice
+        options:
+          - '5'
+          - '6'
+      max_cycles:
+        description: Maximum sequential batches in this run
+        required: true
+        default: '20'
+        type: choice
+        options:
+          - '10'
+          - '20'
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Process review batches
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_REVIEW_BATCH_SIZE: ${{ inputs.batch_size }}
+          GEMINI_MAX_BATCH_RUNS: '2'
+          MAX_CYCLES: ${{ inputs.max_cycles }}
+        run: |
+          for cycle in $(seq 1 "$MAX_CYCLES"); do
+            cp data/review-results.json /tmp/review-results-before.json
+            python scripts/analyze_review.py
+            if cmp -s data/review-results.json /tmp/review-results-before.json; then
+              echo No eligible images remain after cycle $cycle
+              break
+            fi
+            echo Completed batch cycle $cycle
+          done
+
+      - name: Commit updated review results
+        run: |
+          if git diff --quiet -- data/review-results.json; then
+            echo No result changes to commit
+            exit 0
+          fi
+          git config user.name digitalflora-bot
+          git config user.email digitalflora-bot@users.noreply.github.com
+          git add data/review-results.json
+          git commit -m chore: update Gemini review batch results
+          git push origin HEAD:${{ github.ref_name }}

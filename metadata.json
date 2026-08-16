@@ -1,0 +1,11 @@
+{
+  "name": "digitalflora",
+  "description": "Дигитален ботанически хербарий и енциклопедия на флората",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

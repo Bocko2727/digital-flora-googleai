@@ -1,0 +1,39 @@
+name: Analyze herbarium review images
+
+on:
+  push:
+    paths:
+      - 'images/review/**'
+      - 'scripts/analyze_review.py'
+      - 'scripts/stage_existing_review_images.py'
+      - '.github/workflows/gemini-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stage known unreviewed images
+        run: python scripts/stage_existing_review_images.py
+      - name: Analyze pending images
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/analyze_review.py
+      - name: Save staged images and review results
+        run: |
+          git config user.name 'digitalflora-bot'
+          git config user.email 'digitalflora-bot@users.noreply.github.com'
+          git add images/review data/review-results.json
+          git diff --cached --quiet || git commit -m 'chore: stage images and update review results'
+          git pull --rebase origin "${{ github.ref_name }}"
+          git push

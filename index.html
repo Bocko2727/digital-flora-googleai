@@ -7,6 +7,10 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#285c38">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script>
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
@@ -36,11 +40,44 @@
       --amber: #8a4c00;
       --red: #8a2626;
       --blue: #1e40af;
+      --body-bg: #edf1eb;
+      --input-bg: #ffffff;
+      --hover-bg: #f0f7f1;
+      --img-bg: #dde4dc;
+      --badge-bg: #edf4ed;
+      --badge-prob-bg: #fff0d9;
+      --badge-unc-bg: #fde3e3;
+      --note-bg: #fff3dc;
+      --qa-bg: #f0f7ff;
+      --qa-border: #bfdbfe;
+    }
+    :root[data-theme="dark"] {
+      --green: #408c58;
+      --green-dark: #285c38;
+      --green-light: #5ba370;
+      --paper: #19211c;
+      --paper-card: #111713;
+      --ink: #e2e8e4;
+      --line: #2b382f;
+      --muted: #8b9990;
+      --amber: #e6a23c;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --body-bg: #090d0b;
+      --input-bg: #111713;
+      --hover-bg: #1f2b23;
+      --img-bg: #1a241e;
+      --badge-bg: #1a2a1f;
+      --badge-prob-bg: #2a2011;
+      --badge-unc-bg: #2e1515;
+      --note-bg: #2a2011;
+      --qa-bg: #101c2e;
+      --qa-border: #1e3a8a;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #edf1eb;
+      background: var(--body-bg);
       color: var(--ink);
       font: 16px/1.58 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       display: flex;
@@ -91,10 +128,17 @@
       transition: all 0.2s;
     }
     .upload-btn {
-      background: #fff;
+      background: var(--input-bg);
       color: var(--green);
     }
-    .upload-btn:hover { background: #f0f7f1; transform: translateY(-1px); }
+    .upload-btn:hover { background: var(--hover-bg); transform: translateY(-1px); }
+    
+    .theme-toggle-btn {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .theme-toggle-btn:hover { background: rgba(255,255,255,0.25); }
     
     .drive-btn {
       background: #3b82f6;
@@ -162,7 +206,7 @@
       font-size: 14px;
       flex: 1;
       min-width: 180px;
-      background: #fff;
+      background: var(--input-bg);
       color: var(--ink);
       outline: none;
       transition: border-color 0.2s;
@@ -210,7 +254,7 @@
       width: 100%;
       height: 210px;
       object-fit: cover;
-      background: #dde4dc;
+      background: var(--img-bg);
     }
     .plant-card-content {
       padding: 16px;
@@ -248,13 +292,13 @@
       display: inline-block;
       padding: 4px 10px;
       border-radius: 999px;
-      background: #edf4ed;
+      background: var(--badge-bg);
       color: var(--green);
       font-size: 12px;
       font-weight: 700;
     }
-    .badge.prob { background: #fff0d9; color: var(--amber); }
-    .badge.unc { background: #fde3e3; color: var(--red); }
+    .badge.prob { background: var(--badge-prob-bg); color: var(--amber); }
+    .badge.unc { background: var(--badge-unc-bg); color: var(--red); }
     
     /* Pagination / Load more */
     .load-more-wrap {
@@ -310,7 +354,7 @@
       position: absolute;
       top: 14px;
       right: 14px;
-      background: #ffffff;
+      background: var(--input-bg);
       border: 1px solid var(--line);
       width: 38px;
       height: 38px;
@@ -326,7 +370,7 @@
       transition: transform 0.2s, background 0.2s;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
-    .close-btn:hover { background: #f0f7f1; transform: scale(1.08); }
+    .close-btn:hover { background: var(--hover-bg); transform: scale(1.08); }
     
     #view {
       flex: 1;
@@ -383,12 +427,14 @@
     .gallery button {
       border: 1px solid var(--line);
       border-radius: 6px;
-      background: #fff;
+      background: var(--input-bg);
+      color: var(--ink);
       padding: 6px 12px;
       cursor: pointer;
       font-weight: 600;
       font-size: 13px;
     }
+    .gallery button:hover { background: var(--hover-bg); }
     .gallery span { font-size: 13px; color: var(--muted); }
     
     .info {
@@ -401,7 +447,7 @@
       padding: 28px 34px 60px;
     }
     .info::-webkit-scrollbar { width: 8px; }
-    .info::-webkit-scrollbar-track { background: #eef2ec; }
+    .info::-webkit-scrollbar-track { background: var(--hover-bg); }
     .info::-webkit-scrollbar-thumb { background: #9db29e; border-radius: 4px; }
     .info::-webkit-scrollbar-thumb:hover { background: #738f74; }
     
@@ -422,8 +468,8 @@
     .note {
       margin-top: 18px;
       padding: 12px 14px;
-      background: #fff3dc;
-      border-left: 4px solid #d88b18;
+      background: var(--note-bg);
+      border-left: 4px solid var(--amber);
       border-radius: 7px;
       font-size: 13px;
     }
@@ -438,9 +484,9 @@
     .qa-box {
       margin-top: 22px;
       padding: 16px;
-      background: #f0f7ff;
-      border: 1px solid #bfdbfe;
-      border-left: 4px solid #3b82f6;
+      background: var(--qa-bg);
+      border: 1px solid var(--qa-border);
+      border-left: 4px solid var(--blue);
       border-radius: 8px;
     }
     
@@ -449,7 +495,7 @@
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
-      background: #fff0d9;
+      background: var(--note-bg);
       color: var(--amber);
       padding: 12px 28px;
       border-radius: 30px;
@@ -457,7 +503,7 @@
       box-shadow: 0 6px 20px rgba(0,0,0,0.18);
       z-index: 2000;
       display: none;
-      border: 1px solid #f6d194;
+      border: 1px solid var(--amber);
     }
 
     /* Edit form input styling */
@@ -520,7 +566,7 @@
         top: 14px;
         right: 14px;
         position: fixed;
-        background: #ffffff;
+        background: var(--input-bg);
         box-shadow: 0 2px 12px rgba(0,0,0,0.4);
       }
     }
@@ -539,6 +585,7 @@
   <div class="header-actions">
     <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър</button>
     <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
+    <button class="action-btn theme-toggle-btn" onclick="toggleTheme()" title="Смяна на темата">🌓 Тема</button>
     <div id="authContainer">
       <button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>
     </div>
@@ -580,7 +627,7 @@
 </main>
 
 <div id="loginModal" class="modal-overlay" onclick="if(event.target===this) this.style.display='none'" style="display:none; z-index: 2000;">
-  <div class="modal-content" style="max-width: 400px; padding: 2rem; height: auto; display: block; overflow: visible; background: #fff; border-radius: 12px; margin: 10% auto;">
+  <div class="modal-content" style="max-width: 400px; padding: 2rem; height: auto; display: block; overflow: visible; background: var(--paper-card); border-radius: 12px; margin: 10% auto;">
     <button class="close-btn" onclick="document.getElementById('loginModal').style.display='none'" title="Затвори (Esc)" style="position: absolute; right: 10px; top: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
     <h2 style="text-align:center; margin-bottom: 1rem; color: var(--green);">Вход в системата</h2>
     <div id="firebaseui-auth-container"></div>
@@ -602,6 +649,13 @@ if (!window.firebase.apps.length) {
   window.firebase.initializeApp(firebaseConfig);
 }
 const ui = new window.firebaseui.auth.AuthUI(window.firebase.auth());
+
+window.toggleTheme = function() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+};
 
 window.showFirebaseUILogin = function() {
   document.getElementById('loginModal').style.display = 'flex';
@@ -1182,8 +1236,8 @@ window.drawModal = function() {
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
           <h2>${p.commonName}</h2>
           <div style="display:flex; gap:8px;">
-            <button onclick="editPlant()" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
-            <button onclick="deletePlant('${p.id}')" style="background:#fde3e3; color:#8a2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
+            <button onclick="editPlant()" style="background:var(--hover-bg); color:var(--ink); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
+            <button onclick="deletePlant('${p.id}')" style="background:var(--badge-unc-bg); color:var(--red); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
           </div>
         </div>
         <div class="latin">${p.latinName}</div>
@@ -1217,8 +1271,8 @@ window.drawModal = function() {
         <div class="sources"><b>Източници:</b> ${src}</div>
         
         <div class="qa-box">
-          <h3 style="margin:0 0 4px 0; color:#1e40af; font-size:15px;">🔍 Интерактивен QA Контрол</h3>
-          <p style="font-size:13px; margin:0 0 10px 0; color:#475569;">Попитай AI ботаника дали снимката отговаря на името.</p>
+          <h3 style="margin:0 0 4px 0; color:var(--blue); font-size:15px;">🔍 Интерактивен QA Контрол</h3>
+          <p style="font-size:13px; margin:0 0 10px 0; color:var(--muted);">Попитай AI ботаника дали снимката отговаря на името.</p>
           <button onclick="runQA()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px;">Извърши AI верификация</button>
           <div id="qa-result" style="margin-top:10px; font-weight:600; font-size:14px; white-space:pre-wrap;"></div>
         </div>

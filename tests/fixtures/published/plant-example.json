@@ -1,0 +1,11 @@
+{
+  "id": "plant_example_001",
+  "status": "published",
+  "taxonomy": {"bulgarian_name": "Примерно растение", "scientific_name": "Examplea botanica", "family": "Exampleaceae", "rank": "species"},
+  "identification": {"confidence": "probable", "visible_diagnostic_features": ["примерен белег"], "possible_lookalikes": [], "uncertainty_note": "Примерен запис за validator тест."},
+  "ecology": {"habitat": [], "observation_date": null, "observation_location": null},
+  "content": {"benefits": [], "risks": {"humans": [], "dogs": [], "cats": [], "livestock": []}, "uses": [], "interesting_fact": null},
+  "evidence": {"sources": [{"title": "Test source", "claim": "Fixture only"}], "photos": [{"id": "external-test-image"}]},
+  "provenance": {"ai_analysis": [], "editor_review": {"reviewed_by": "test", "reviewed_at": "2026-08-17T00:00:00.000Z", "decision": "approved", "notes": null}},
+  "created_at": "2026-08-17T00:00:00.000Z", "updated_at": "2026-08-17T00:00:00.000Z"
+}

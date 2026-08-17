@@ -1,0 +1,32 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - refactor/catalog-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint when configured
+        run: npm run lint --if-present
+      - name: Run existing package tests when configured
+        run: npm test --if-present
+      - name: Run catalog validator
+        run: node scripts/qa/validate-plant-data.js
+      - name: Run validator smoke test
+        run: node --test tests/plant-data-validation.test.js
+      - name: Scan tracked text files for secrets
+        run: node scripts/qa/scan-secrets.js

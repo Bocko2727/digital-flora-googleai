@@ -817,25 +817,25 @@ window.loadMorePlants = function() {
   }
   
   const chunk = window.filteredPlants.slice(start, end);
-  const cardsHtml = chunk.map((p, idx) => {
-    const globalIdx = start + idx;
-const firstPhoto = p.photos[0] || '';
+const cardsHtml = chunk.map((p, idx) => {
+  const globalIdx = start + idx;
 
-const storageBase =
-  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+  const firstPhoto = p.photos[0] || '';
 
-const fileName = firstPhoto
-  .replace(/^\/+/, '')
-  .replace(/^images\/review\//, '')
-  .replace(/^images\//, '')
-  .replace(/^review\//, '');
+  const storageBase =
+    'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
 
-const imgPath = fileName
-  ? storageBase + encodeURIComponent(fileName)
-  : '/icon.svg';
-    }
-}
-    return `
+  const fileName = firstPhoto
+    .replace(/^\/+/, '')
+    .replace(/^images\/review\//, '')
+    .replace(/^images\//, '')
+    .replace(/^review\//, '');
+
+  const imgPath = fileName
+    ? storageBase + encodeURIComponent(fileName)
+    : '/icon.svg';
+
+  return `
       <div class="plant-card" onclick="openPlant(${globalIdx})">
         <img class="plant-card-img" src="${imgPath}" alt="${p.commonName}" loading="lazy" onerror="this.src='/icon.svg'">
         <div class="plant-card-content">

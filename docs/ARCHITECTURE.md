@@ -2,7 +2,7 @@
 
 ## Current state
 
-Digital Flora currently contains a root static web client (`index.html`, `sw.js`, `manifest.json`), a Node server entry point (`server.js`), Firebase configuration artifacts, data-review JSON files, image-review assets, and a `src/db` database layer. This is an observed repository layout, not yet a confirmed runtime dependency graph.
+Digital Flora currently contains a root static web client (`index.html`, `sw.js`, `manifest.json`), a Node server entry point (`server.js`), data-review JSON files, image-review assets, and a `src/db` database layer. The browser catalog UI uses the server REST API; Supabase is the target managed backend for the ongoing migration.
 
 ## Inventory
 
@@ -11,7 +11,6 @@ Digital Flora currently contains a root static web client (`index.html`, `sw.js`
 - Server candidate: root `server.js`
 - Review data: `data/review-results.json`, `data/review-batch-c189987.json`
 - Image-review assets: `images/review/`
-- Firebase artifacts: root files and `app/applet/`
 - Database candidates: `src/db/` with parallel JavaScript and TypeScript modules
 - Automation: root scripts plus `scripts/`
 
@@ -57,7 +56,7 @@ This is a migration target, not a directive to move existing files. Every move n
 ## Decisions pending verification
 
 - Which module or service is the runtime source for plant profiles.
-- Whether root Firebase files and `app/applet/` are both active.
+- Which Supabase services and policies are required before the managed backend becomes the catalog source of truth.
 - Whether JavaScript or TypeScript modules under `src/db/` are imported at runtime.
 - Whether `server.js` is deployed and which host invokes it.
 

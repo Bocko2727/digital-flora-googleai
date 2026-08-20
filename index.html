@@ -820,7 +820,9 @@ window.loadMorePlants = function() {
   const cardsHtml = chunk.map((p, idx) => {
     const globalIdx = start + idx;
     const firstPhoto = p.photos[0] || '';
-    const imgPath = firstPhoto.includes('/') ? firstPhoto : 'images/' + firstPhoto;
+    const imgPath = firstPhoto.includes('/')
+  ? firstPhoto
+  : `/images/review/${encodeURIComponent(firstPhoto)}`;
     return `
       <div class="plant-card" onclick="openPlant(${globalIdx})">
         <img class="plant-card-img" src="${imgPath}" alt="${p.commonName}" loading="lazy" onerror="this.src='/icon.svg'">

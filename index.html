@@ -637,44 +637,12 @@
 
 <script type="module">
 import { setCachedAccessToken, getCachedAccessToken } from './firebase-client.js';
-  
-if (!window.firebase.apps.length) {
-  window.firebase.initializeApp(firebaseConfig);
-}
-const ui = new window.firebaseui.auth.AuthUI(window.firebase.auth());
 
 window.toggleTheme = function() {
   const currentTheme = document.documentElement.getAttribute('data-theme');
   const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', newTheme);
   localStorage.setItem('theme', newTheme);
-};
-
-window.showFirebaseUILogin = function() {
-  document.getElementById('loginModal').style.display = 'flex';
-  ui.start('#firebaseui-auth-container', {
-    signInFlow: 'popup',
-    signInOptions: [
-      {
-        provider: window.firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-        scopes: [
-          'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
-          'https://www.googleapis.com/auth/drive'
-        ]
-      },
-      window.firebase.auth.EmailAuthProvider.PROVIDER_ID
-    ],
-    callbacks: {
-      signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-        document.getElementById('loginModal').style.display = 'none';
-        if (authResult.credential && authResult.credential.accessToken) {
-          setCachedAccessToken(authResult.credential.accessToken);
-        }
-        return false;
-      }
-    }
-  });
 };
 
 const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
@@ -734,34 +702,6 @@ document.addEventListener('wheel', (e) => {
 }, { passive: true });
 
 // Track Auth State
-onAuthStateChanged(auth, (user) => {
-  window.currentUser = user;
-  const container = document.getElementById('authContainer');
-  if (!container) return;
-  if (user) {
-    container.innerHTML = `
-      <div class="user-profile">
-        <img src="${user.photoURL || '/icon.svg'}" class="user-avatar" alt="Avatar">
-        <span class="user-name">${user.displayName || user.email.split('@')[0]}</span>
-        <button class="logout-mini" onclick="logoutUser()" title="Изход">Изход</button>
-      </div>
-    `;
-    
-    // Sync user with Cloud SQL database
-    fetch('/api/users/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoUrl: user.photoURL
-      })
-    }).catch(console.warn);
-  } else {
-    container.innerHTML = `<button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>`;
-  }
-});
 
 window.logoutUser = async function() {
   try {
@@ -933,16 +873,14 @@ async function onGooglePickerCallback(data) {
 // Load Plants from Firestore
 async function loadPlants(retries = 2) {
   try {
-    const q = query(collection(db, "plants"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    const dataList = [];
-    querySnapshot.forEach((docSnapshot) => {
-      dataList.push({ id: docSnapshot.id, ...docSnapshot.data() });
-    });
-    
-    window.allPlants = [];
+    const res = await fetch('/api/plants');
+    if (!res.ok) {
+      throw new Error('Грешка при зареждане на растенията.');
+    }
+    const dataList = await res.json();
     const families = new Set();
-    
+    window.allPlants = [];
+
     (dataList || []).forEach((data) => {
       window.allPlants.push({
         id: data.id || `plant_${Math.random()}`,
@@ -964,27 +902,27 @@ async function loadPlants(retries = 2) {
         families.add(data.family.replace(/\s*\(.*?\)\s*/g, '').trim());
       }
     });
-    
+
     const famSelect = document.getElementById('familyFilter');
     if (famSelect) {
-      famSelect.innerHTML = '<option value="">Всички семейства</option>';
+      famSelect.innerHTML = '<option value=\"\">Всички семейства</option>';
       Array.from(families).sort().forEach(f => {
-        if (f) famSelect.innerHTML += `<option value="${f}">${f}</option>`;
+        if (f) famSelect.innerHTML += `<option value=\"${f}\">${f}</option>`;
       });
     }
-    
+
     onFilterChange();
   } catch (err) {
-    console.warn("Plants fetch attempt failed:", err);
+    console.warn('Plants fetch attempt failed:', err);
     if (retries > 0) {
       setTimeout(() => loadPlants(retries - 1), 1000);
     } else {
       const grid = document.getElementById('grid');
       if (grid) {
         grid.innerHTML = `
-          <div style="text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)">
+          <div style=\"text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)\">
             <p>Възникна временна пауза при свързване със сървъра.</p>
-            <button onclick="location.reload()" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
+            <button onclick=\"location.reload()\" style=\"background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;\">Презареди</button>
           </div>
         `;
       }

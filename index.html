@@ -1125,8 +1125,18 @@ window.runQA = async function() {
 window.editPlant = function() {
   const p = window.filteredPlants[n];
   const curPhoto = p.photos[photo] || '';
-  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
-  
+ const storageBase =
+  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+
+const fileName = curPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '');
+
+const imgPath = fileName
+  ? storageBase + encodeURIComponent(fileName)
+  : '/icon.svg';
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 

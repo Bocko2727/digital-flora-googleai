@@ -636,9 +636,8 @@
 </div>
 
 <script type="module">
-import { firebaseConfig, auth, db, googleAuthProvider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setCachedAccessToken, getCachedAccessToken, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from './firebase-client.js';
-
-// Setup Compat App for Firebase UI
+import { setCachedAccessToken, getCachedAccessToken } from './firebase-client.js';
+  
 if (!window.firebase.apps.length) {
   window.firebase.initializeApp(firebaseConfig);
 }

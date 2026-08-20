@@ -1006,9 +1006,20 @@ window.drawModal = function() {
   if (!p) return;
   const a = p.photos;
   const multi = a.length > 1;
-  const curPhoto = a[photo] || '';
-  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
-  
+ const curPhoto = a[photo] || '';
+
+const storageBase =
+  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+
+const fileName = curPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '');
+
+const imgPath = fileName
+  ? storageBase + encodeURIComponent(fileName)
+  : '/icon.svg';
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 

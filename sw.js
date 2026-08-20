@@ -31,7 +31,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // CRITICAL: NEVER intercept any cross-origin requests (Firebase, Google APIs, gstatic, etc.)
+  // CRITICAL: Never intercept cross-origin requests (for example Google APIs or other external services).
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }

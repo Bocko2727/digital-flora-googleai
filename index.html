@@ -10,12 +10,6 @@
   <script>
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
-  </script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
-  <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css" />
-  <script>
     // Global safe error listener to prevent uncaught third-party script crashes
     window.addEventListener('error', function(e) {
       if (e.message && (e.message.includes('Script error') || e.message.includes('ResizeObserver'))) {
@@ -586,8 +580,8 @@
     <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър</button>
     <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
     <button class="action-btn theme-toggle-btn" onclick="toggleTheme()" title="Смяна на темата">🌓 Тема</button>
-    <div id="authContainer">
-      <button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>
+    <div id="authContainer" role="status" aria-live="polite">
+      <span class="auth-btn" title="Supabase migration in progress">Входът временно е недостъпен</span>
     </div>
   </div>
 </header>
@@ -626,14 +620,6 @@
   <div id="loadMoreTrigger"></div>
 </main>
 
-<div id="loginModal" class="modal-overlay" onclick="if(event.target===this) this.style.display='none'" style="display:none; z-index: 2000;">
-  <div class="modal-content" style="max-width: 400px; padding: 2rem; height: auto; display: block; overflow: visible; background: var(--paper-card); border-radius: 12px; margin: 10% auto;">
-    <button class="close-btn" onclick="document.getElementById('loginModal').style.display='none'" title="Затвори (Esc)" style="position: absolute; right: 10px; top: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
-    <h2 style="text-align:center; margin-bottom: 1rem; color: var(--green);">Вход в системата</h2>
-    <div id="firebaseui-auth-container"></div>
-  </div>
-</div>
-
 <div id="modal" class="modal-overlay" onclick="handleModalOverlayClick(event)">
   <div class="modal-content">
     <button class="close-btn" onclick="closeModal()" title="Затвори (Esc)">×</button>
@@ -642,46 +628,15 @@
 </div>
 
 <script type="module">
-import { firebaseConfig, auth, db, googleAuthProvider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setCachedAccessToken, getCachedAccessToken, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from './firebase-client.js';
-
-// Setup Compat App for Firebase UI
-if (!window.firebase.apps.length) {
-  window.firebase.initializeApp(firebaseConfig);
-}
-const ui = new window.firebaseui.auth.AuthUI(window.firebase.auth());
+let cachedAccessToken = null;
+const setCachedAccessToken = (token) => { cachedAccessToken = token; };
+const getCachedAccessToken = () => cachedAccessToken;
 
 window.toggleTheme = function() {
   const currentTheme = document.documentElement.getAttribute('data-theme');
   const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', newTheme);
   localStorage.setItem('theme', newTheme);
-};
-
-window.showFirebaseUILogin = function() {
-  document.getElementById('loginModal').style.display = 'flex';
-  ui.start('#firebaseui-auth-container', {
-    signInFlow: 'popup',
-    signInOptions: [
-      {
-        provider: window.firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-        scopes: [
-          'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
-          'https://www.googleapis.com/auth/drive'
-        ]
-      },
-      window.firebase.auth.EmailAuthProvider.PROVIDER_ID
-    ],
-    callbacks: {
-      signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-        document.getElementById('loginModal').style.display = 'none';
-        if (authResult.credential && authResult.credential.accessToken) {
-          setCachedAccessToken(authResult.credential.accessToken);
-        }
-        return false;
-      }
-    }
-  });
 };
 
 const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
@@ -740,43 +695,10 @@ document.addEventListener('wheel', (e) => {
   }
 }, { passive: true });
 
-// Track Auth State
-onAuthStateChanged(auth, (user) => {
-  window.currentUser = user;
-  const container = document.getElementById('authContainer');
-  if (!container) return;
-  if (user) {
-    container.innerHTML = `
-      <div class="user-profile">
-        <img src="${user.photoURL || '/icon.svg'}" class="user-avatar" alt="Avatar">
-        <span class="user-name">${user.displayName || user.email.split('@')[0]}</span>
-        <button class="logout-mini" onclick="logoutUser()" title="Изход">Изход</button>
-      </div>
-    `;
-    
-    // Sync user with Cloud SQL database
-    fetch('/api/users/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoUrl: user.photoURL
-      })
-    }).catch(console.warn);
-  } else {
-    container.innerHTML = `<button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>`;
-  }
-});
-
-window.logoutUser = async function() {
-  try {
-    await signOut(auth);
-    setCachedAccessToken(null);
-  } catch (err) {
-    console.error("SignOut Error:", err);
-  }
+// Authentication is intentionally unavailable until Supabase Auth is configured.
+window.logoutUser = function() {
+  setCachedAccessToken(null);
+  window.currentUser = null;
 };
 
 window.triggerUpload = function() {
@@ -785,171 +707,22 @@ window.triggerUpload = function() {
 };
 
 // Google Picker Integration
-window.openGooglePicker = async function() {
-  if (!window.currentUser) {
-    const shouldLogin = confirm("За да изберете снимка от Google Drive, е необходимо да влезете с вашия Google акаунт. Искате ли да влезете сега?");
-    if (shouldLogin) {
-      await window.loginGoogle();
-    }
-    if (!window.currentUser) return;
-  }
-
-  let token = getCachedAccessToken();
-  if (!token) {
-    await window.loginGoogle();
-    token = getCachedAccessToken();
-  }
-
-  if (!token) {
-    alert("Липсва достъп до Google Drive. Моля, влезте отново.");
-    return;
-  }
-
-  try {
-    await loadGooglePickerApi();
-  } catch (e) {
-    alert("Google Picker API не можа да се зареди: " + e.message);
-    return;
-  }
-
-  if (!window.google || !window.google.picker) {
-    alert("Google Picker API се зарежда... Моля, опитайте пак след няколко секунди.");
-    return;
-  }
-
-  const pickerOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0)
-    ? window.location.ancestorOrigins[window.location.ancestorOrigins.length - 1]
-    : window.location.origin;
-
-  const docsView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS_IMAGES)
-    .setMimeTypes("image/jpeg,image/png,image/webp,image/jpg,image/gif");
-
-  const picker = new window.google.picker.PickerBuilder()
-    .addView(docsView)
-    .addView(window.google.picker.ViewId.DOCS)
-    .setOAuthToken(token)
-    .setCallback(onGooglePickerCallback)
-    .setOrigin(pickerOrigin)
-    .setTitle("🌿 Избери снимка на растение от Google Drive")
-    .build();
-
-  picker.setVisible(true);
+window.openGooglePicker = function() {
+  alert('Google Drive import е временно недостъпен по време на Supabase Auth миграцията.');
 };
 
 // Google Picker Selection Handler
-async function onGooglePickerCallback(data) {
-  if (data && data.action === window.google.picker.Action.PICKED) {
-    const file = data.docs[0];
-    const fileId = file.id;
-    const fileName = file.name;
-    const mimeType = file.mimeType || 'image/jpeg';
-
-    const status = document.getElementById('uploadStatus');
-    if (status) {
-      status.style.display = 'block';
-      status.innerText = `⏳ Изтегляне на "${fileName}" от Google Drive и ботанически AI анализ...`;
-    }
-
-    try {
-      const token = getCachedAccessToken();
-      const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (!driveRes.ok) {
-        throw new Error(`Грешка при четене от Google Drive (${driveRes.status})`);
-      }
-
-      const blob = await driveRes.blob();
-      const base64Data = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
-
-      // AI Analysis
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Data })
-      });
-      
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Грешка при анализа на снимката.');
-      }
-      
-      const result = await res.json();
-      const record = result.record;
-      const storedImageUrl = result.imageUrl || result.base64;
-
-      // Log import into Cloud SQL PostgreSQL
-      fetch('/api/drive/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileId,
-          fileName,
-          mimeType,
-          userUid: window.currentUser ? window.currentUser.uid : null
-        })
-      }).catch(console.warn);
-
-      const pData = {
-        commonName: record.likely_common_name_bg || 'Неопределено растение',
-        latinName: record.likely_scientific_name || 'Неопределен таксон',
-        family: record.family || 'Семейство',
-        photos: [storedImageUrl],
-        confidence: (() => {
-          if (typeof record.confidence === 'number') {
-            const pct = Math.round(record.confidence * 100) + '%';
-            if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
-            if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
-            return 'Неопределимо (AI ' + pct + ')';
-          }
-          return 'Вероятно (Google Drive)';
-        })(),
-        recognition: record.visible_features || ('Импортирано от Google Drive: ' + fileName),
-        habitat: 'Google Drive образец',
-        lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
-        benefits: 'Ботаническо наблюдение',
-        risks: record.safety_note || 'Внимание',
-        uses: 'Импортирано от Google Drive',
-        funFact: `Импортиран файл от Google Drive: ${fileName}`,
-        authorEmail: window.currentUser ? window.currentUser.email : 'Google Drive потребител',
-        authorUid: window.currentUser ? window.currentUser.uid : null
-      };
-
-      pData.createdAt = serverTimestamp();
-      await addDoc(collection(db, "plants"), pData);
-
-      if (status) status.style.display = 'none';
-      await loadPlants();
-      window.openPlant(0);
-
-    } catch (err) {
-      if (status) {
-        status.innerText = '❌ Грешка: ' + err.message;
-        setTimeout(() => { status.style.display = 'none'; }, 6000);
-      }
-      console.error(err);
-    }
-  }
-}
-
-// Load Plants from Firestore
+// Load Plants from REST API
 async function loadPlants(retries = 2) {
   try {
-    const q = query(collection(db, "plants"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    const dataList = [];
-    querySnapshot.forEach((docSnapshot) => {
-      dataList.push({ id: docSnapshot.id, ...docSnapshot.data() });
-    });
-    
-    window.allPlants = [];
+    const res = await fetch('/api/plants');
+    if (!res.ok) {
+      throw new Error('Грешка при зареждане на растенията.');
+    }
+    const dataList = await res.json();
     const families = new Set();
-    
+    window.allPlants = [];
+
     (dataList || []).forEach((data) => {
       window.allPlants.push({
         id: data.id || `plant_${Math.random()}`,
@@ -971,27 +744,27 @@ async function loadPlants(retries = 2) {
         families.add(data.family.replace(/\s*\(.*?\)\s*/g, '').trim());
       }
     });
-    
+
     const famSelect = document.getElementById('familyFilter');
     if (famSelect) {
-      famSelect.innerHTML = '<option value="">Всички семейства</option>';
+      famSelect.innerHTML = '<option value=\"\">Всички семейства</option>';
       Array.from(families).sort().forEach(f => {
-        if (f) famSelect.innerHTML += `<option value="${f}">${f}</option>`;
+        if (f) famSelect.innerHTML += `<option value=\"${f}\">${f}</option>`;
       });
     }
-    
+
     onFilterChange();
   } catch (err) {
-    console.warn("Plants fetch attempt failed:", err);
+    console.warn('Plants fetch attempt failed:', err);
     if (retries > 0) {
       setTimeout(() => loadPlants(retries - 1), 1000);
     } else {
       const grid = document.getElementById('grid');
       if (grid) {
         grid.innerHTML = `
-          <div style="text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)">
+          <div style=\"text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)\">
             <p>Възникна временна пауза при свързване със сървъра.</p>
-            <button onclick="location.reload()" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
+            <button onclick=\"location.reload()\" style=\"background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;\">Презареди</button>
           </div>
         `;
       }
@@ -1044,11 +817,26 @@ window.loadMorePlants = function() {
   }
   
   const chunk = window.filteredPlants.slice(start, end);
-  const cardsHtml = chunk.map((p, idx) => {
-    const globalIdx = start + idx;
-    const firstPhoto = p.photos[0] || '';
-    const imgPath = firstPhoto.includes('/') ? firstPhoto : 'images/' + firstPhoto;
-    return `
+const cardsHtml = chunk.map((p, idx) => {
+  const globalIdx = start + idx;
+
+  const firstPhoto = p.photos[0] || '';
+
+  const storageBase =
+    'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+
+const fileName = firstPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '')
+  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
+
+  const imgPath = fileName
+    ? storageBase + encodeURIComponent(fileName)
+    : '/icon.svg';
+
+  return `
       <div class="plant-card" onclick="openPlant(${globalIdx})">
         <img class="plant-card-img" src="${imgPath}" alt="${p.commonName}" loading="lazy" onerror="this.src='/icon.svg'">
         <div class="plant-card-content">
@@ -1167,8 +955,15 @@ window.uploadPlant = async function uploadPlant(event) {
       authorUid: window.currentUser ? window.currentUser.uid : null
     };
     
-    pData.createdAt = serverTimestamp();
-    await addDoc(collection(db, "plants"), pData);
+    const createRes = await fetch('/api/plants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pData)
+    });
+    if (!createRes.ok) {
+      const payload = await createRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при запис на растението.');
+    }
 
     await loadPlants();
     window.openPlant(0);
@@ -1212,9 +1007,22 @@ window.drawModal = function() {
   if (!p) return;
   const a = p.photos;
   const multi = a.length > 1;
-  const curPhoto = a[photo] || '';
-  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
-  
+ const curPhoto = a[photo] || '';
+
+const storageBase =
+  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+
+const fileName = curPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '')
+  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
+
+
+const imgPath = fileName
+  ? storageBase + encodeURIComponent(fileName)
+  : '/icon.svg';
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 
@@ -1320,8 +1128,19 @@ window.runQA = async function() {
 window.editPlant = function() {
   const p = window.filteredPlants[n];
   const curPhoto = p.photos[photo] || '';
-  const imgPath = curPhoto.includes('/') ? curPhoto : 'images/' + curPhoto;
-  
+ const storageBase =
+  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+
+const fileName = curPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '')
+  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
+
+const imgPath = fileName
+  ? storageBase + encodeURIComponent(fileName)
+  : '/icon.svg';
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 
@@ -1417,7 +1236,15 @@ window.savePlant = async function(id, ev) {
   };
 
   try {
-    await updateDoc(doc(db, "plants", id), updateData);
+    const updateRes = await fetch(`/api/plants/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    if (!updateRes.ok) {
+      const payload = await updateRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при обновяване на растението.');
+    }
     
     const p = window.filteredPlants[n];
     if (p) {
@@ -1443,7 +1270,13 @@ window.savePlant = async function(id, ev) {
 window.deletePlant = async function(id) {
   if (!confirm('Сигурни ли сте, че искате да изтриете този ботанически запис?')) return;
   try {
-    await deleteDoc(doc(db, "plants", id));
+    const deleteRes = await fetch(`/api/plants/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    if (!deleteRes.ok) {
+      const payload = await deleteRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при изтриване на растението.');
+    }
     closeModal();
     await loadPlants();
   } catch (e) {

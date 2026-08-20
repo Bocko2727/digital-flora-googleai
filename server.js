@@ -291,7 +291,7 @@ app.post('/api/upload', async (req, res) => {
       relativeUrl = `images/uploads/${fileName}`;
     } catch (e) {
       console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message);
-      // In a real app we'd upload to GCS/Firebase here, but for now we'll just omit the local URL
+      // Persistent image storage will be added through the approved Supabase Storage migration; until then, omit the local URL on read-only filesystems.
       relativeUrl = '';
     }
 

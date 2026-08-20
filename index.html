@@ -819,22 +819,20 @@ window.loadMorePlants = function() {
   const chunk = window.filteredPlants.slice(start, end);
   const cardsHtml = chunk.map((p, idx) => {
     const globalIdx = start + idx;
-       const firstPhoto = p.photos[0] || '';
+const firstPhoto = p.photos[0] || '';
 
-    let imgPath = '/icon.svg';
+const storageBase =
+  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
 
-    if (firstPhoto) {
-      if (firstPhoto.startsWith('/')) {
-        imgPath = firstPhoto;
-      } else if (firstPhoto.startsWith('images/')) {
-        imgPath = `/${firstPhoto}`;
-      } else if (firstPhoto.startsWith('review/')) {
-        imgPath = `/images/${firstPhoto}`;
-      } else if (firstPhoto.includes('/')) {
-        imgPath = `/images/${firstPhoto}`;
-      } else {
-        imgPath = `/images/review/${encodeURIComponent(firstPhoto)}`;
-      }
+const fileName = firstPhoto
+  .replace(/^\/+/, '')
+  .replace(/^images\/review\//, '')
+  .replace(/^images\//, '')
+  .replace(/^review\//, '');
+
+const imgPath = fileName
+  ? storageBase + encodeURIComponent(fileName)
+  : '/icon.svg';
     }
 }
     return `

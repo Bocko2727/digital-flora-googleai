@@ -580,8 +580,8 @@
     <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър</button>
     <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
     <button class="action-btn theme-toggle-btn" onclick="toggleTheme()" title="Смяна на темата">🌓 Тема</button>
-    <div id="authContainer">
-      <button class="auth-btn" onclick="showFirebaseUILogin()">👤 Вход</button>
+    <div id="authContainer" role="status" aria-live="polite">
+      <span class="auth-btn" title="Supabase migration in progress">Входът временно е недостъпен</span>
     </div>
   </div>
 </header>
@@ -620,14 +620,6 @@
   <div id="loadMoreTrigger"></div>
 </main>
 
-<div id="loginModal" class="modal-overlay" onclick="if(event.target===this) this.style.display='none'" style="display:none; z-index: 2000;">
-  <div class="modal-content" style="max-width: 400px; padding: 2rem; height: auto; display: block; overflow: visible; background: var(--paper-card); border-radius: 12px; margin: 10% auto;">
-    <button class="close-btn" onclick="document.getElementById('loginModal').style.display='none'" title="Затвори (Esc)" style="position: absolute; right: 10px; top: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
-    <h2 style="text-align:center; margin-bottom: 1rem; color: var(--green);">Вход в системата</h2>
-    <div id="firebaseui-auth-container"></div>
-  </div>
-</div>
-
 <div id="modal" class="modal-overlay" onclick="handleModalOverlayClick(event)">
   <div class="modal-content">
     <button class="close-btn" onclick="closeModal()" title="Затвори (Esc)">×</button>
@@ -636,7 +628,9 @@
 </div>
 
 <script type="module">
-import { setCachedAccessToken, getCachedAccessToken } from './firebase-client.js';
+let cachedAccessToken = null;
+const setCachedAccessToken = (token) => { cachedAccessToken = token; };
+const getCachedAccessToken = () => cachedAccessToken;
 
 window.toggleTheme = function() {
   const currentTheme = document.documentElement.getAttribute('data-theme');
@@ -701,15 +695,10 @@ document.addEventListener('wheel', (e) => {
   }
 }, { passive: true });
 
-// Track Auth State
-
-window.logoutUser = async function() {
-  try {
-    await signOut(auth);
-    setCachedAccessToken(null);
-  } catch (err) {
-    console.error("SignOut Error:", err);
-  }
+// Authentication is intentionally unavailable until Supabase Auth is configured.
+window.logoutUser = function() {
+  setCachedAccessToken(null);
+  window.currentUser = null;
 };
 
 window.triggerUpload = function() {
@@ -718,159 +707,12 @@ window.triggerUpload = function() {
 };
 
 // Google Picker Integration
-window.openGooglePicker = async function() {
-  if (!window.currentUser) {
-    const shouldLogin = confirm("За да изберете снимка от Google Drive, е необходимо да влезете с вашия Google акаунт. Искате ли да влезете сега?");
-    if (shouldLogin) {
-      await window.loginGoogle();
-    }
-    if (!window.currentUser) return;
-  }
-
-  let token = getCachedAccessToken();
-  if (!token) {
-    await window.loginGoogle();
-    token = getCachedAccessToken();
-  }
-
-  if (!token) {
-    alert("Липсва достъп до Google Drive. Моля, влезте отново.");
-    return;
-  }
-
-  try {
-    await loadGooglePickerApi();
-  } catch (e) {
-    alert("Google Picker API не можа да се зареди: " + e.message);
-    return;
-  }
-
-  if (!window.google || !window.google.picker) {
-    alert("Google Picker API се зарежда... Моля, опитайте пак след няколко секунди.");
-    return;
-  }
-
-  const pickerOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0)
-    ? window.location.ancestorOrigins[window.location.ancestorOrigins.length - 1]
-    : window.location.origin;
-
-  const docsView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS_IMAGES)
-    .setMimeTypes("image/jpeg,image/png,image/webp,image/jpg,image/gif");
-
-  const picker = new window.google.picker.PickerBuilder()
-    .addView(docsView)
-    .addView(window.google.picker.ViewId.DOCS)
-    .setOAuthToken(token)
-    .setCallback(onGooglePickerCallback)
-    .setOrigin(pickerOrigin)
-    .setTitle("🌿 Избери снимка на растение от Google Drive")
-    .build();
-
-  picker.setVisible(true);
+window.openGooglePicker = function() {
+  alert('Google Drive import е временно недостъпен по време на Supabase Auth миграцията.');
 };
 
 // Google Picker Selection Handler
-async function onGooglePickerCallback(data) {
-  if (data && data.action === window.google.picker.Action.PICKED) {
-    const file = data.docs[0];
-    const fileId = file.id;
-    const fileName = file.name;
-    const mimeType = file.mimeType || 'image/jpeg';
-
-    const status = document.getElementById('uploadStatus');
-    if (status) {
-      status.style.display = 'block';
-      status.innerText = `⏳ Изтегляне на "${fileName}" от Google Drive и ботанически AI анализ...`;
-    }
-
-    try {
-      const token = getCachedAccessToken();
-      const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (!driveRes.ok) {
-        throw new Error(`Грешка при четене от Google Drive (${driveRes.status})`);
-      }
-
-      const blob = await driveRes.blob();
-      const base64Data = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
-
-      // AI Analysis
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Data })
-      });
-      
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Грешка при анализа на снимката.');
-      }
-      
-      const result = await res.json();
-      const record = result.record;
-      const storedImageUrl = result.imageUrl || result.base64;
-
-      // Log import into Cloud SQL PostgreSQL
-      fetch('/api/drive/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileId,
-          fileName,
-          mimeType,
-          userUid: window.currentUser ? window.currentUser.uid : null
-        })
-      }).catch(console.warn);
-
-      const pData = {
-        commonName: record.likely_common_name_bg || 'Неопределено растение',
-        latinName: record.likely_scientific_name || 'Неопределен таксон',
-        family: record.family || 'Семейство',
-        photos: [storedImageUrl],
-        confidence: (() => {
-          if (typeof record.confidence === 'number') {
-            const pct = Math.round(record.confidence * 100) + '%';
-            if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
-            if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
-            return 'Неопределимо (AI ' + pct + ')';
-          }
-          return 'Вероятно (Google Drive)';
-        })(),
-        recognition: record.visible_features || ('Импортирано от Google Drive: ' + fileName),
-        habitat: 'Google Drive образец',
-        lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
-        benefits: 'Ботаническо наблюдение',
-        risks: record.safety_note || 'Внимание',
-        uses: 'Импортирано от Google Drive',
-        funFact: `Импортиран файл от Google Drive: ${fileName}`,
-        authorEmail: window.currentUser ? window.currentUser.email : 'Google Drive потребител',
-        authorUid: window.currentUser ? window.currentUser.uid : null
-      };
-
-      pData.createdAt = serverTimestamp();
-      await addDoc(collection(db, "plants"), pData);
-
-      if (status) status.style.display = 'none';
-      await loadPlants();
-      window.openPlant(0);
-
-    } catch (err) {
-      if (status) {
-        status.innerText = '❌ Грешка: ' + err.message;
-        setTimeout(() => { status.style.display = 'none'; }, 6000);
-      }
-      console.error(err);
-    }
-  }
-}
-
-// Load Plants from Firestore
+// Load Plants from REST API
 async function loadPlants(retries = 2) {
   try {
     const res = await fetch('/api/plants');
@@ -1098,8 +940,15 @@ window.uploadPlant = async function uploadPlant(event) {
       authorUid: window.currentUser ? window.currentUser.uid : null
     };
     
-    pData.createdAt = serverTimestamp();
-    await addDoc(collection(db, "plants"), pData);
+    const createRes = await fetch('/api/plants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pData)
+    });
+    if (!createRes.ok) {
+      const payload = await createRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при запис на растението.');
+    }
 
     await loadPlants();
     window.openPlant(0);
@@ -1348,7 +1197,15 @@ window.savePlant = async function(id, ev) {
   };
 
   try {
-    await updateDoc(doc(db, "plants", id), updateData);
+    const updateRes = await fetch(`/api/plants/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    if (!updateRes.ok) {
+      const payload = await updateRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при обновяване на растението.');
+    }
     
     const p = window.filteredPlants[n];
     if (p) {
@@ -1374,7 +1231,13 @@ window.savePlant = async function(id, ev) {
 window.deletePlant = async function(id) {
   if (!confirm('Сигурни ли сте, че искате да изтриете този ботанически запис?')) return;
   try {
-    await deleteDoc(doc(db, "plants", id));
+    const deleteRes = await fetch(`/api/plants/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    if (!deleteRes.ok) {
+      const payload = await deleteRes.json().catch(() => ({}));
+      throw new Error(payload.error || 'Грешка при изтриване на растението.');
+    }
     closeModal();
     await loadPlants();
   } catch (e) {

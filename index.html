@@ -825,12 +825,12 @@ const cardsHtml = chunk.map((p, idx) => {
   const storageBase =
     'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
 
-  const fileName = curPhoto
+const fileName = firstPhoto
   .replace(/^\/+/, '')
   .replace(/^images\/review\//, '')
   .replace(/^images\//, '')
   .replace(/^review\//, '')
-  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');;
+  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
 
   const imgPath = fileName
     ? storageBase + encodeURIComponent(fileName)

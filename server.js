@@ -3,6 +3,7 @@ import fs from 'fs';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSqlPlants } from './src/db/plants.js';
@@ -87,8 +88,9 @@ async function generateWithKiloAI(prompt, base64Image, mimeType) {
 
 
 // ---------------------------------------------------------------------------
-// Security helpers: safe filenames, path resolution, SSRF-safe remote fetch,
-// XML escaping and a dependency-free rate limiter.
+// Security helpers: safe filenames, path resolution, SSRF-safe remote fetch
+// and XML escaping. Rate limiting is provided by express-rate-limit below,
+// which is recognized by CodeQL's js/missing-rate-limiting query.
 // ---------------------------------------------------------------------------
 
 const SAFE_FILENAME_RE = /^[A-Za-z0-9_-]+\.(?:jpe?g|png|gif|svg|webp)$/i;
@@ -191,39 +193,30 @@ function escapeXml(value) {
   }[c]));
 }
 
-// Minimal in-memory sliding-window rate limiter (no new npm dependency, so
-// npm ci / package-lock stay unaffected). Suitable for a single-instance
-// deployment; safe to swap for a shared-store limiter later if scaled out.
-function createRateLimiter({ windowMs, max, message }) {
-  const hits = new Map();
-  return (req, res, next) => {
-    const key = req.ip || 'unknown';
-    const now = Date.now();
-    const entry = hits.get(key);
-    if (!entry || now - entry.start > windowMs) {
-      hits.set(key, { start: now, count: 1 });
-      return next();
-    }
-    entry.count += 1;
-    if (entry.count > max) {
-      res.setHeader('Retry-After', Math.ceil((entry.start + windowMs - now) / 1000));
-      return res.status(429).json({ error: message || 'Твърде много заявки. Опитайте отново по-късно.' });
-    }
-    return next();
-  };
-}
-
-const aiLimiter = createRateLimiter({
-  windowMs: 5 * 60 * 1000, max: 8,
-  message: 'Твърде много заявки за AI анализ. Опитайте отново след няколко минути.',
+// Rate limiters backed by express-rate-limit (recognized by CodeQL's
+// js/missing-rate-limiting query). Same thresholds as before: strict for
+// AI-invoking routes, moderate for authenticated-write-style routes, light
+// for the public catalog read.
+const aiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Твърде много заявки за AI анализ. Опитайте отново след няколко минути.' },
 });
-const catalogReadLimiter = createRateLimiter({
-  windowMs: 5 * 60 * 1000, max: 300,
-  message: 'Твърде много заявки към каталога. Опитайте отново по-късно.',
+const catalogReadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Твърде много заявки към каталога. Опитайте отново по-късно.' },
 });
-const moderateLimiter = createRateLimiter({
-  windowMs: 5 * 60 * 1000, max: 30,
-  message: 'Твърде много заявки. Опитайте отново по-късно.',
+const moderateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Твърде много заявки. Опитайте отново по-късно.' },
 });
 
 // Temporary migration-safe response for legacy Cloud SQL catalog writes.
@@ -334,7 +327,7 @@ app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res)
         }));
         return res.json(items);
       }
-    } catch (e) {}
+    } catch (e) { }
     res.status(500).json({ error: err.message || 'Грешка при извличане от базата данни' });
   }
 });

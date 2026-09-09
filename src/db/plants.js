@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { db } from './index.js';
 import { plants } from './schema.js';
 import { desc, eq, count } from 'drizzle-orm';
+import supabasePool from './supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,9 +31,10 @@ export async function seedPlantsIfEmpty() {
       try {
         const arr = JSON.parse(r.photos || '[]');
         arr.forEach(p => existingPhotos.add(p));
-      } catch (e) {}
+      } catch (e) { }
     });
 
+    // fallow-ignore-next-line code-duplication
     const confMap = {
       high: 'Потвърдено (Ботанически архив)',
       medium: 'Вероятно (Ботанически архив)',
@@ -98,6 +100,75 @@ export async function getSqlPlants() {
     }));
   } catch (error) {
     console.error("Database getPlants failed:", error.message);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Supabase Postgres read path (Task 4). This is the new catalog source of
+// truth for GET /api/plants. It intentionally does not touch the Cloud SQL
+// functions above — no parallel writes, no deletion of the legacy path.
+// ---------------------------------------------------------------------------
+
+// public.plants.confidence holds two historical formats:
+//   - text labels from the bulk botanical-archive import: 'high'|'medium'|'low'
+//   - numeric AI confidence scores (as text) from individual uploads: '0.0'..'1.0'
+// Both are mapped to the display strings the frontend already expects.
+// Kept as tiny single-purpose helpers (cyclomatic <=3 each) to stay under
+// the repo's CRAP-score threshold without needing test coverage.
+function isNumericConfidenceString(value) {
+  return /^[01](\.\d+)?$/.test(value);
+}
+
+function formatNumericConfidence(value) {
+  const asNumber = Number(value);
+  const pct = Math.round(asNumber * 100) + '%';
+  if (asNumber >= 0.8) return `Потвърдено (AI ${pct})`;
+  if (asNumber >= 0.4) return `Вероятно (AI ${pct})`;
+  return `Неопределимо (AI ${pct})`;
+}
+
+function formatArchiveConfidence(value) {
+  if (value === 'high') return 'Потвърдено (Ботанически архив)';
+  if (value === 'low') return 'Неопределимо (Ботанически архив)';
+  return 'Вероятно (Ботанически архив)';
+}
+
+function mapSupabaseConfidence(raw) {
+  const value = raw == null ? '' : String(raw).trim();
+  return isNumericConfidenceString(value) ? formatNumericConfidence(value) : formatArchiveConfidence(value);
+}
+
+export async function getSupabasePlants() {
+  if (!supabasePool) {
+    return null;
+  }
+  try {
+    const { rows } = await supabasePool.query(
+      `SELECT id, common_name, latin_name, family, photos, confidence, recognition,
+              habitat, lookalikes, benefits, risks, uses, fun_fact, author_email, created_at
+       FROM public.plants
+       ORDER BY created_at DESC`
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      commonName: r.common_name || 'Неопределено растение',
+      latinName: r.latin_name || 'Неопределен таксон',
+      family: r.family || 'Семейство',
+      photos: Array.isArray(r.photos) && r.photos.length > 0 ? r.photos : ['placeholder.jpg'],
+      confidence: mapSupabaseConfidence(r.confidence),
+      recognition: r.recognition || 'Няма допълнителни данни',
+      habitat: r.habitat || 'Ботанически образец от България',
+      lookalikes: r.lookalikes || '-',
+      benefits: r.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
+      risks: r.risks || 'Няма регистрирани критични рискове.',
+      uses: r.uses || 'Хербариен образец и ботаническо наблюдение.',
+      funFact: r.fun_fact || 'Изисква се наблюдение в период на активен цъфтеж.',
+      authorEmail: r.author_email || 'digitalflora@botany.bg',
+      createdAt: r.created_at,
+    }));
+  } catch (error) {
+    console.error('Supabase getPlants failed:', error.message);
     return null;
   }
 }

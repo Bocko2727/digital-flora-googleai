@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
-import { seedPlantsIfEmpty, getSqlPlants } from './src/db/plants.js';
+import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 
@@ -70,10 +70,18 @@ app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'd
 const uploadsDir = path.join(__dirname, 'images', 'uploads');
 try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message); }
 
+// REST CRUD for Plants. Supabase Postgres is the catalog source of truth
+// for reads (Task 4); the JSON archive remains only as a documented
+// fallback for when Supabase is unreachable or not yet configured. Writes
+// are disabled below until Supabase-authenticated writes land (Task 5).
 app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res) => {
   try {
-    const plantsList = await getSqlPlants();
-    if (plantsList && plantsList.length > 0) return res.json(plantsList);
+    const plantsList = await getSupabasePlants();
+    if (plantsList && plantsList.length > 0) {
+      return res.json(plantsList);
+    }
+
+    // Fallback to review-results.json if Supabase returned 0/unavailable
     const jsonPath = path.join(__dirname, 'data', 'review-results.json');
     if (fs.existsSync(jsonPath)) {
       const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
@@ -83,6 +91,7 @@ app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res)
     res.json([]);
   } catch (err) {
     console.error('Fetch plants error:', err);
+    // Fallback to review-results.json on Supabase connection error
     try {
       const jsonPath = path.join(__dirname, 'data', 'review-results.json');
       if (fs.existsSync(jsonPath)) {
@@ -169,6 +178,9 @@ app.post('/api/drive/log', moderateLimiter, async (req, res) => {
 
 app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey, kiloConfigured: !!kiloApiKey, kiloModel: kiloModel }); });
 
+// Fallback for missing images: only ever resolves against the fixed
+// allowlisted image directories or the SSRF-safe remote fetch helper.
+// Never joins raw req.path onto __dirname.
 app.use(staticAssetLimiter, async (req, res, next) => {
   if (!/\.(png|jpe?g|gif|svg|webp)$/i.test(req.path)) return next();
   const filename = path.basename(req.path);

@@ -7,6 +7,8 @@ import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
+import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
+import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 
@@ -56,9 +58,19 @@ const aiLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 8, standardHeaders: 
 const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към каталога. Опитайте отново по-късно.' } });
 const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
+function isCatalogInputError(error) {
+  return /Invalid plant id|required|photos must|No supported/.test(error.message);
+}
 
-function catalogWriteDisabled(req, res) { res.status(403).json({ error: 'Catalog write operations are temporarily disabled pending Supabase-authenticated write migration.', code: 'CATALOG_WRITE_DISABLED' }); }
-
+function forwardCatalogMutationError(res, next, error) {
+  if (isCatalogInputError(error)) {
+    return res.status(400).json({
+      error: error.message,
+      code: 'INVALID_PLANT_INPUT',
+    });
+  }
+  return next(error);
+}
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
@@ -104,9 +116,34 @@ app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res)
   }
 });
 
-app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, catalogWriteDisabled);
-app.put('/api/plants/:id', moderateLimiter, catalogWriteDisabled);
-app.delete('/api/plants/:id', moderateLimiter, catalogWriteDisabled);
+app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
+  try {
+    const plant = await insertSupabasePlant(req.body, req.catalogActor);
+    return res.status(201).json({ success: true, plant });
+  }  catch (error) {
+    return forwardCatalogMutationError(res, next, error);
+  }
+});
+
+app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
+  try {
+    const plant = await updateSupabasePlant(req.params.id, req.body);
+    if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    return res.json({ success: true, plant });
+  } catch (error) {
+    return forwardCatalogMutationError(res, next, error);
+  }
+});
+
+app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
+  try {
+    const plant = await deleteSupabasePlant(req.params.id);
+    if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    return res.json({ success: true });
+  } catch (error) {
+    return forwardCatalogMutationError(res, next, error);
+  }
+});
 
 app.post('/api/qa', aiLimiter, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;

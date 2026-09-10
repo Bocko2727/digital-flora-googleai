@@ -9,6 +9,7 @@ import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
+import { storePlantImage } from './src/storage/supabase-images.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 
@@ -17,14 +18,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
 app.set('trust proxy', 1);
+
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
 const kiloApiKey = process.env.kilo_code || process.env.KILO_CODE || process.env.KILO_API_KEY || process.env.KILO_KEY;
 const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/api/gateway';
 const kiloModel = process.env.KILO_MODEL || 'kilo-auto';
 
+
 const ai = new GoogleGenAI(apiKey ? { apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } } : { httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+
 
 async function generateWithKiloAI(prompt, base64Image, mimeType) {
   if (!kiloApiKey) throw new Error('kilo_code / KILO_API_KEY не е зададен в системната среда.');
@@ -36,12 +41,14 @@ async function generateWithKiloAI(prompt, base64Image, mimeType) {
   return json.choices?.[0]?.message?.content || '';
 }
 
+
 const SAFE_FILENAME_RE = /^[A-Za-z0-9_-]+\.(?:jpe?g|png|gif|svg|webp)$/i;
 const ALLOWED_IMAGE_DIRS = [path.join(__dirname, 'images', 'review'), path.join(__dirname, 'images', 'herbarium'), path.join(__dirname, 'images', 'uploads')];
 function getSafeBasename(rawName) { if (typeof rawName !== 'string' || !rawName) return null; const base = path.basename(rawName); return SAFE_FILENAME_RE.test(base) ? base : null; }
 function isPathInsideDir(candidatePath, dirPath) { return candidatePath === dirPath || candidatePath.startsWith(dirPath + path.sep); }
 function findSafeCandidateInDir(base, dir) { const resolvedDir = path.resolve(dir); const candidate = path.resolve(resolvedDir, base); if (!isPathInsideDir(candidate, resolvedDir)) return null; return fs.existsSync(candidate) ? candidate : null; }
 function resolveSafeImagePath(rawName) { const base = getSafeBasename(rawName); if (!base) return null; return ALLOWED_IMAGE_DIRS.map((dir) => findSafeCandidateInDir(base, dir)).find(Boolean) || null; }
+
 
 const ALLOWED_REMOTE_HOST = 'raw.githubusercontent.com';
 const REMOTE_IMAGE_BASE_PATHS = ['', 'images/review/', 'images/herbarium/'];
@@ -54,6 +61,7 @@ async function findFirstImageCandidate(urls) { for (const url of urls) { const r
 async function fetchAllowedGithubImage(rawName) { const base = getSafeBasename(rawName); if (!base) return null; return findFirstImageCandidate(buildGithubImageUrls(base)); }
 function escapeXml(value) { return String(value).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c])); }
 
+
 const aiLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки за AI анализ. Опитайте отново след няколко минути.' } });
 const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към каталога. Опитайте отново по-късно.' } });
 const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
@@ -61,6 +69,7 @@ const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standa
 function isCatalogInputError(error) {
   return /Invalid plant id|required|photos must|No supported/.test(error.message);
 }
+
 
 function forwardCatalogMutationError(res, next, error) {
   if (isCatalogInputError(error)) {
@@ -74,13 +83,17 @@ function forwardCatalogMutationError(res, next, error) {
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
+
 const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
 app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
 
+
 app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
+
 
 const uploadsDir = path.join(__dirname, 'images', 'uploads');
 try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message); }
+
 
 // REST CRUD for Plants. Supabase Postgres is the catalog source of truth
 // for reads (Task 4); the JSON archive remains only as a documented
@@ -92,6 +105,7 @@ app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res)
     if (plantsList && plantsList.length > 0) {
       return res.json(plantsList);
     }
+
 
     // Fallback to review-results.json if Supabase returned 0/unavailable
     const jsonPath = path.join(__dirname, 'data', 'review-results.json');
@@ -116,6 +130,7 @@ app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res)
   }
 });
 
+
 app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
     const plant = await insertSupabasePlant(req.body, req.catalogActor);
@@ -124,6 +139,7 @@ app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalo
     return forwardCatalogMutationError(res, next, error);
   }
 });
+
 
 app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
@@ -135,6 +151,7 @@ app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCat
   }
 });
 
+
 app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
     const plant = await deleteSupabasePlant(req.params.id);
@@ -144,6 +161,7 @@ app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, require
     return forwardCatalogMutationError(res, next, error);
   }
 });
+
 
 app.post('/api/qa', aiLimiter, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;
@@ -167,6 +185,7 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
     res.json({ verdict });
   } catch (error) { console.error('QA Error:', error); res.status(500).json({ error: error.message || 'Грешка при AI верификацията.' }); }
 });
+
 
 app.post('/api/upload', aiLimiter, async (req, res) => {
   const { image } = req.body;
@@ -195,6 +214,7 @@ app.post('/api/upload', aiLimiter, async (req, res) => {
   } catch (error) { console.error('Upload Error:', error); res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' }); }
 });
 
+
 app.post('/api/users/sync', moderateLimiter, async (req, res) => {
   try {
     const { uid, email, displayName, photoUrl } = req.body;
@@ -204,6 +224,7 @@ app.post('/api/users/sync', moderateLimiter, async (req, res) => {
   } catch (err) { console.error('User sync error:', err); res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' }); }
 });
 
+
 app.post('/api/drive/log', moderateLimiter, async (req, res) => {
   try {
     const { fileId, fileName, mimeType, userUid } = req.body;
@@ -212,6 +233,7 @@ app.post('/api/drive/log', moderateLimiter, async (req, res) => {
     res.json({ success: true, log });
   } catch (err) { console.error('Drive log error:', err); res.status(500).json({ error: err.message || 'Грешка при запис на Drive импорт' }); }
 });
+
 
 app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey, kiloConfigured: !!kiloApiKey, kiloModel: kiloModel }); });
 
@@ -232,6 +254,37 @@ app.get('/api/auth/whoami', moderateLimiter, authenticateCatalogActor, (req, res
   res.json({ id: req.catalogActor.id, email: req.catalogActor.email, role: req.catalogActor.role });
 });
 
+// Secure local photo upload: editor/admin only, validated server-side,
+// stored in Supabase Storage under a plant-scoped object key, then
+// appended to the plant's existing photos array. Anonymous -> 401,
+// viewer -> 403 (enforced by the same Task 6 middleware used for /api/plants).
+app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image provided.', code: 'IMAGE_REQUIRED' });
+
+    const existingPlants = await getSupabasePlants();
+    const targetPlant = existingPlants.find((plant) => plant.id === req.params.id);
+    if (!targetPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+
+    const stored = await storePlantImage(req.params.id, image);
+    const currentPhotos = Array.isArray(targetPlant.photos) ? targetPlant.photos : [];
+    const updatedPlant = await updateSupabasePlant(req.params.id, { photos: [...currentPhotos, stored.imageUrl] });
+    if (!updatedPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+
+    return res.status(201).json({ success: true, imageUrl: stored.imageUrl, objectKey: stored.objectKey, plant: updatedPlant });
+  } catch (error) {
+    if (/Invalid image|Invalid plant id|MB after decoding|does not match its declared/.test(error.message)) {
+      return res.status(400).json({ error: error.message, code: 'INVALID_IMAGE' });
+    }
+    if (/Storage server configuration|persist image/.test(error.message)) {
+      return res.status(502).json({ error: 'Image storage is temporarily unavailable.', code: 'STORAGE_UNAVAILABLE' });
+    }
+    return next(error);
+  }
+});
+
+
 // Fallback for missing images: only ever resolves against the fixed
 // allowlisted image directories or the SSRF-safe remote fetch helper.
 // Never joins raw req.path onto __dirname.
@@ -246,14 +299,19 @@ app.use(staticAssetLimiter, async (req, res, next) => {
   return res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect width="400" height="400" fill="#dde4dc"/><text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#667067" text-anchor="middle" dy=".3em">Снимката липсва</text><text x="50%" y="58%" font-family="monospace" font-size="12" fill="#888" text-anchor="middle">${escapeXml(filename)}</text></svg>`);
 });
 
+
 app.get(['/health', '/healthz'], (req, res) => { res.status(200).json({ status: 'ok', uptime: process.uptime() }); });
+
 
 app.get('/', staticAssetLimiter, (req, res) => { res.sendFile(path.join(__dirname, 'index.html'), { dotfiles: 'deny' }); });
 
+
 app.use((err, req, res, next) => { console.error('Unhandled Express error:', err); if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' }); });
+
 
 const HOST = '0.0.0.0';
 const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); seedPlantsIfEmpty().catch(e => { console.error('Background seed error:', e); }); });
+
 
 process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
 process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });

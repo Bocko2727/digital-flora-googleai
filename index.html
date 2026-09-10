@@ -724,9 +724,12 @@ window.authHeaders = authHeaders;
 // Resolves a stored photo reference to a displayable URL. New uploads
 // (Task 7) store full https:// Supabase Storage URLs directly; legacy
 // entries store bare filenames that need the old string-transform.
+// A fixed cache-busting query param avoids stale CDN-cached 404 responses
+// for filenames that were requested before the underlying object existed.
 function resolvePhotoUrl(rawPhoto) {
   if (!rawPhoto) return '/icon.svg';
-  if (/^https?:\/\//i.test(rawPhoto) || rawPhoto.startsWith('data:image')) return rawPhoto;
+  if (rawPhoto.startsWith('data:image')) return rawPhoto;
+  if (/^https?:\/\//i.test(rawPhoto)) return rawPhoto.includes('?') ? rawPhoto : rawPhoto + '?cb=1';
   const storageBase = 'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
   const fileName = rawPhoto
     .replace(/^\/+/, '')
@@ -734,7 +737,7 @@ function resolvePhotoUrl(rawPhoto) {
     .replace(/^images\//, '')
     .replace(/^review\//, '')
     .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
-  return fileName ? storageBase + encodeURIComponent(fileName) : '/icon.svg';
+  return fileName ? storageBase + encodeURIComponent(fileName) + '?cb=1' : '/icon.svg';
 }
 window.resolvePhotoUrl = resolvePhotoUrl;
 
@@ -1354,41 +1357,6 @@ window.drawModal = function() {
 
 // QA Verification
 window.runQA = async function() {
-  const p = window.filteredPlants[n];
-  const curPhoto = p.photos[photo] || '';
-  const filename = curPhoto.startsWith('data:image') ? curPhoto : curPhoto.split('/').pop();
-  const claimedName = p.commonName;
-  const latinName = p.latinName;
-  
-  const resDiv = document.getElementById('qa-result');
-  if (!resDiv) return;
-  resDiv.innerHTML = '⏳ AI ботаникът анализира... Моля, изчакайте.';
-  resDiv.style.color = '#d97706';
-  
-  try {
-    const res = await fetch('/api/qa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, claimedName, latinName })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Грешка при проверката');
-    
-    const v = data.verdict;
-    if (v.startsWith('YES') || v.startsWith('ДА') || v.includes('YES')) {
-      resDiv.style.color = '#15803d';
-    } else {
-      resDiv.style.color = '#b91c1c';
-    }
-    resDiv.innerText = v;
-  } catch (err) {
-    resDiv.style.color = '#b91c1c';
-    resDiv.innerText = '❌ ' + err.message;
-  }
-};
-
-// Edit Plant Modal Form
-window.editPlant = function() {
   const p = window.filteredPlants[n];
   const curPhoto = p.photos[photo] || '';
   const imgPath = resolvePhotoUrl(curPhoto);

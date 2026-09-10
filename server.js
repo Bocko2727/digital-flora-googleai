@@ -160,7 +160,7 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
   try {
     let verdict = '';
     try {
-      const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ inlineData: { data: base64, mimeType } }, { text: prompt }] } });
+      const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64, mimeType } }, { text: prompt }] } });
       verdict = response.text ? response.text.trim() : 'Няма отговор от AI.';
     } catch (geminiErr) {
       if (kiloApiKey) { console.log('Gemini QA failed, falling back to Kilo AI:', geminiErr.message); verdict = await generateWithKiloAI(prompt, base64, mimeType); } else { throw geminiErr; }
@@ -186,7 +186,7 @@ app.post('/api/upload', aiLimiter, async (req, res) => {
     const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{\n  "likely_scientific_name": "Latin name",\n  "likely_common_name_bg": "Bulgarian name",\n  "family": "Botanical family in Latin or Bulgarian",\n  "confidence": 0.9,\n  "identification_level": "species",\n  "visible_features": "Description in Bulgarian",\n  "possible_lookalikes": "Similar plants",\n  "safety_note": "Toxicity or warnings in Bulgarian",\n  "additional_photos_needed": "What else to photograph for better ID"\n}`;
     let aiData;
     try {
-      const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ inlineData: { data: base64Image, mimeType } }, { text: prompt }] }, config: { responseMimeType: "application/json" } });
+      const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64Image, mimeType } }, { text: prompt }] }, config: { responseMimeType: "application/json" } });
       aiData = JSON.parse(response.text);
     } catch (geminiErr) {
       if (kiloApiKey) { console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message); const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType); const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim(); aiData = JSON.parse(cleanedText); } else { throw geminiErr; }

@@ -3,469 +3,288 @@ import fs from 'fs';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
-import { seedPlantsIfEmpty, getSqlPlants, insertSqlPlant, updateSqlPlant, deleteSqlPlant } from './src/db/plants.js';
+import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
+import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
+import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
+import { storePlantImage } from './src/storage/supabase-images.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Gemini and Kilo AI with environment keys
+app.set('trust proxy', 1);
+
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
 const kiloApiKey = process.env.kilo_code || process.env.KILO_CODE || process.env.KILO_API_KEY || process.env.KILO_KEY;
 const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/api/gateway';
 const kiloModel = process.env.KILO_MODEL || 'kilo-auto';
 
-const ai = new GoogleGenAI(apiKey ? {
-  apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-} : {
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
+const ai = new GoogleGenAI(apiKey ? { apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } } : { httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
 
-// Helper for Kilo AI API Gateway (OpenAI compatible format)
 async function generateWithKiloAI(prompt, base64Image, mimeType) {
-  if (!kiloApiKey) {
-    throw new Error('kilo_code / KILO_API_KEY не е зададен в системната среда.');
-  }
-
-  const messages = [
-    {
-      role: 'user',
-      content: base64Image ? [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}` } }
-      ] : prompt
-    }
-  ];
-
+  if (!kiloApiKey) throw new Error('kilo_code / KILO_API_KEY не е зададен в системната среда.');
+  const messages = [{ role: 'user', content: base64Image ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}` } }] : prompt }];
   const baseUrlSanitized = kiloBaseUrl.replace(/\/$/, '');
-  const response = await fetch(`${baseUrlSanitized}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${kiloApiKey}`
-    },
-    body: JSON.stringify({
-      model: kiloModel,
-      messages: messages,
-      temperature: 0.2
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Kilo AI API грешка (${response.status}): ${errorText}`);
-  }
-
+  const response = await fetch(`${baseUrlSanitized}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${kiloApiKey}` }, body: JSON.stringify({ model: kiloModel, messages, temperature: 0.2 }) });
+  if (!response.ok) { const errorText = await response.text(); throw new Error(`Kilo AI API грешка (${response.status}): ${errorText}`); }
   const json = await response.json();
   return json.choices?.[0]?.message?.content || '';
 }
 
-// Serve static assets from project root
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '25mb', extended: true }));
-app.use(express.static(__dirname));
+const SAFE_FILENAME_RE = /^[A-Za-z0-9_-]+\.(?:jpe?g|png|gif|svg|webp)$/i;
+const ALLOWED_IMAGE_DIRS = [path.join(__dirname, 'images', 'review'), path.join(__dirname, 'images', 'herbarium'), path.join(__dirname, 'images', 'uploads')];
+function getSafeBasename(rawName) { if (typeof rawName !== 'string' || !rawName) return null; const base = path.basename(rawName); return SAFE_FILENAME_RE.test(base) ? base : null; }
+function isPathInsideDir(candidatePath, dirPath) { return candidatePath === dirPath || candidatePath.startsWith(dirPath + path.sep); }
+function findSafeCandidateInDir(base, dir) { const resolvedDir = path.resolve(dir); const candidate = path.resolve(resolvedDir, base); if (!isPathInsideDir(candidate, resolvedDir)) return null; return fs.existsSync(candidate) ? candidate : null; }
+function resolveSafeImagePath(rawName) { const base = getSafeBasename(rawName); if (!base) return null; return ALLOWED_IMAGE_DIRS.map((dir) => findSafeCandidateInDir(base, dir)).find(Boolean) || null; }
 
-// Ensure upload directory exists
-const uploadsDir = path.join(__dirname, 'images', 'uploads');
-try {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-} catch (e) {
-  console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message);
+const ALLOWED_REMOTE_HOST = 'raw.githubusercontent.com';
+const REMOTE_IMAGE_BASE_PATHS = ['', 'images/review/', 'images/herbarium/'];
+const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+function buildGithubImageUrls(base) { return REMOTE_IMAGE_BASE_PATHS.map((prefix) => `https://${ALLOWED_REMOTE_HOST}/Bocko2727/digitalflora/main/${prefix}${encodeURIComponent(base)}`); }
+function isAcceptableImageResponse(fetchRes) { if (!fetchRes.ok) return false; const contentType = fetchRes.headers.get('content-type') || ''; return contentType.toLowerCase().startsWith('image/'); }
+function isWithinSizeLimit(fetchRes, arrayBuffer) { const declaredLength = Number(fetchRes.headers.get('content-length') || 0); if (declaredLength && declaredLength > MAX_REMOTE_IMAGE_BYTES) return false; return arrayBuffer.byteLength <= MAX_REMOTE_IMAGE_BYTES; }
+async function fetchImageCandidate(url) { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 5000); try { const fetchRes = await fetch(url, { redirect: 'error', signal: controller.signal }); if (!isAcceptableImageResponse(fetchRes)) return null; const arrayBuffer = await fetchRes.arrayBuffer(); if (!isWithinSizeLimit(fetchRes, arrayBuffer)) return null; return { buffer: Buffer.from(arrayBuffer), contentType: fetchRes.headers.get('content-type') }; } catch (e) { return null; } finally { clearTimeout(timeout); } }
+async function findFirstImageCandidate(urls) { for (const url of urls) { const result = await fetchImageCandidate(url); if (result) return result; } return null; }
+async function fetchAllowedGithubImage(rawName) { const base = getSafeBasename(rawName); if (!base) return null; return findFirstImageCandidate(buildGithubImageUrls(base)); }
+function escapeXml(value) { return String(value).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c])); }
+
+const aiLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки за AI анализ. Опитайте отново след няколко минути.' } });
+const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към каталога. Опитайте отново по-късно.' } });
+const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
+const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
+function isCatalogInputError(error) {
+  return /Invalid plant id|required|photos must|No supported/.test(error.message);
 }
 
-// REST CRUD for Plants (Cloud SQL + JSON fallback)
-app.get(['/api/plants', '/api/sql/plants'], async (req, res) => {
+function forwardCatalogMutationError(res, next, error) {
+  if (isCatalogInputError(error)) {
+    return res.status(400).json({
+      error: error.message,
+      code: 'INVALID_PLANT_INPUT',
+    });
+  }
+  return next(error);
+}
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ limit: '25mb', extended: true }));
+
+const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
+app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
+
+app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
+
+const uploadsDir = path.join(__dirname, 'images', 'uploads');
+try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message); }
+
+// REST CRUD for Plants. Supabase Postgres is the catalog source of truth
+// for reads (Task 4); the JSON archive remains only as a documented
+// fallback for when Supabase is unreachable or not yet configured. Writes
+// are disabled below until Supabase-authenticated writes land (Task 5).
+app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res) => {
   try {
-    const plantsList = await getSqlPlants();
+    const plantsList = await getSupabasePlants();
     if (plantsList && plantsList.length > 0) {
       return res.json(plantsList);
     }
-    
-    // Fallback to review-results.json if DB query returned 0
+
+    // Fallback to review-results.json if Supabase returned 0/unavailable
     const jsonPath = path.join(__dirname, 'data', 'review-results.json');
     if (fs.existsSync(jsonPath)) {
       const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      const items = (data.items || []).map((item, idx) => ({
-        id: `json_${idx}`,
-        commonName: item.likely_common_name_bg || 'Неопределено растение',
-        latinName: item.likely_scientific_name || 'Неопределен таксон',
-        family: item.family || 'Семейство',
-        photos: [item.file || 'placeholder.jpg'],
-        confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)',
-        recognition: item.visible_features || 'Няма допълнителни данни',
-        habitat: item.habitat || 'Ботанически образец от България',
-        lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'),
-        benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
-        risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.',
-        uses: item.uses || 'Хербариен образец и ботаническо наблюдение.',
-        funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
-        authorEmail: 'digitalflora@botany.bg',
-        createdAt: item.analyzed_at || new Date().toISOString()
-      }));
+      const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
       return res.json(items);
     }
     res.json([]);
   } catch (err) {
     console.error('Fetch plants error:', err);
-    // Fallback to review-results.json on DB connection error
+    // Fallback to review-results.json on Supabase connection error
     try {
       const jsonPath = path.join(__dirname, 'data', 'review-results.json');
       if (fs.existsSync(jsonPath)) {
         const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-        const items = (data.items || []).map((item, idx) => ({
-          id: `json_${idx}`,
-          commonName: item.likely_common_name_bg || 'Неопределено растение',
-          latinName: item.likely_scientific_name || 'Неопределен таксон',
-          family: item.family || 'Семейство',
-          photos: [item.file || 'placeholder.jpg'],
-          confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)',
-          recognition: item.visible_features || 'Няма допълнителни данни',
-          habitat: item.habitat || 'Ботанически образец от България',
-          lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'),
-          benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.',
-          risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.',
-          uses: item.uses || 'Хербариен образец и ботаническо наблюдение.',
-          funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.',
-          authorEmail: 'digitalflora@botany.bg',
-          createdAt: item.analyzed_at || new Date().toISOString()
-        }));
+        const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
         return res.json(items);
       }
-    } catch (e) {}
+    } catch (e) { }
     res.status(500).json({ error: err.message || 'Грешка при извличане от базата данни' });
   }
 });
 
-app.post(['/api/plants', '/api/sql/plants'], async (req, res) => {
+app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const newPlant = await insertSqlPlant(req.body);
-    res.json({ success: true, plant: newPlant });
-  } catch (err) {
-    console.error('Insert SQL plant error:', err);
-    res.status(500).json({ error: err.message || 'Грешка при запис в базата данни' });
+    const plant = await insertSupabasePlant(req.body, req.catalogActor);
+    return res.status(201).json({ success: true, plant });
+  }  catch (error) {
+    return forwardCatalogMutationError(res, next, error);
   }
 });
 
-app.put('/api/plants/:id', async (req, res) => {
+app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const updated = await updateSqlPlant(req.params.id, req.body);
-    res.json({ success: true, plant: updated });
-  } catch (err) {
-    console.error('Update SQL plant error:', err);
-    res.status(500).json({ error: err.message || 'Грешка при обновяване в базата данни' });
+    const plant = await updateSupabasePlant(req.params.id, req.body);
+    if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    return res.json({ success: true, plant });
+  } catch (error) {
+    return forwardCatalogMutationError(res, next, error);
   }
 });
 
-app.delete('/api/plants/:id', async (req, res) => {
+app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    await deleteSqlPlant(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Delete SQL plant error:', err);
-    res.status(500).json({ error: err.message || 'Грешка при изтриване от базата данни' });
+    const plant = await deleteSupabasePlant(req.params.id);
+    if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    return res.json({ success: true });
+  } catch (error) {
+    return forwardCatalogMutationError(res, next, error);
   }
 });
 
-// QA API
-app.post('/api/qa', async (req, res) => {
+app.post('/api/qa', aiLimiter, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;
-  if (!filename) return res.status(400).json({error: 'Липсва файл'});
-
+  if (!filename) return res.status(400).json({ error: 'Липсва файл' });
   let base64 = null;
-  let mimeType = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const cleanFilename = path.basename(filename);
-  
-  const localPaths = [
-    path.join(__dirname, cleanFilename),
-    path.join(__dirname, 'images', 'review', cleanFilename),
-    path.join(__dirname, 'images', 'herbarium', cleanFilename),
-    path.join(__dirname, 'images', 'uploads', cleanFilename)
-  ];
-  
-  for (const p of localPaths) {
-    if (fs.existsSync(p)) {
-      base64 = fs.readFileSync(p).toString('base64');
-      break;
-    }
-  }
-  
-  if (!base64) {
-    const githubPaths = [
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/${cleanFilename}`,
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/images/review/${cleanFilename}`,
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/images/herbarium/${cleanFilename}`
-    ];
-    for (const url of githubPaths) {
-      try {
-        const fetchRes = await fetch(url);
-        if (fetchRes.ok) {
-          const arrayBuffer = await fetchRes.arrayBuffer();
-          base64 = Buffer.from(arrayBuffer).toString('base64');
-          break;
-        }
-      } catch (e) {}
-    }
-  }
-
-  // Fallback if the photo string itself is base64
-  if (!base64 && filename.startsWith('data:image')) {
-     const match = filename.match(/^data:(image\/\w+);base64,(.*)$/);
-     if (match) {
-         mimeType = match[1];
-         base64 = match[2];
-     }
-  }
-
-  if (!base64) return res.status(404).json({error: 'Снимката не е намерена'});
-
+  let mimeType = typeof filename === 'string' && filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const localPath = resolveSafeImagePath(filename);
+  if (localPath) base64 = fs.readFileSync(localPath).toString('base64');
+  if (!base64) { const remote = await fetchAllowedGithubImage(filename); if (remote) { base64 = remote.buffer.toString('base64'); mimeType = remote.contentType || mimeType; } }
+  if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) { const match = filename.match(/^data:(image\/\w+);base64,(.*)$/); if (match) { mimeType = match[1]; base64 = match[2]; } }
+  if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
   const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${claimedName}" (${latinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
-  
   try {
     let verdict = '';
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: {
-          parts: [
-            { inlineData: { data: base64, mimeType } },
-            { text: prompt }
-          ]
-        }
-      });
+      const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64, mimeType } }, { text: prompt }] } });
       verdict = response.text ? response.text.trim() : 'Няма отговор от AI.';
     } catch (geminiErr) {
-      if (kiloApiKey) {
-        console.log('Gemini QA failed, falling back to Kilo AI:', geminiErr.message);
-        verdict = await generateWithKiloAI(prompt, base64, mimeType);
-      } else {
-        throw geminiErr;
-      }
+      if (kiloApiKey) { console.log('Gemini QA failed, falling back to Kilo AI:', geminiErr.message); verdict = await generateWithKiloAI(prompt, base64, mimeType); } else { throw geminiErr; }
     }
-    
     res.json({ verdict });
-  } catch (error) {
-    console.error('QA Error:', error);
-    res.status(500).json({ error: error.message || 'Грешка при AI верификацията.' });
-  }
+  } catch (error) { console.error('QA Error:', error); res.status(500).json({ error: error.message || 'Грешка при AI верификацията.' }); }
 });
 
-// Upload & AI Recognition API
-app.post('/api/upload', async (req, res) => {
+app.post('/api/upload', aiLimiter, async (req, res) => {
   const { image } = req.body;
-  
-  if (!image) {
-    return res.status(400).json({ error: 'Няма качена снимка.' });
-  }
-
+  if (!image) return res.status(400).json({ error: 'Няма качена снимка.' });
   try {
     const match = image.match(/^data:(image\/(\w+));base64,(.*)$/);
-    if (!match) {
-      return res.status(400).json({ error: 'Невалиден файлов формат.' });
-    }
+    if (!match) return res.status(400).json({ error: 'Невалиден файлов формат.' });
     const mimeType = match[1];
     let ext = match[2] || 'jpg';
     if (ext === 'jpeg') ext = 'jpg';
     const base64Image = match[3];
-    
-    // Save image to disk in uploads directory
     const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
     const filePath = path.join(uploadsDir, fileName);
     let relativeUrl = '';
-    try {
-      fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64'));
-      relativeUrl = `images/uploads/${fileName}`;
-    } catch (e) {
-      console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message);
-      // In a real app we'd upload to GCS/Firebase here, but for now we'll just omit the local URL
-      relativeUrl = '';
-    }
-
-    const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{
-  "likely_scientific_name": "Latin name",
-  "likely_common_name_bg": "Bulgarian name",
-  "family": "Botanical family in Latin or Bulgarian",
-  "confidence": 0.9,
-  "identification_level": "species",
-  "visible_features": "Description in Bulgarian",
-  "possible_lookalikes": "Similar plants",
-  "safety_note": "Toxicity or warnings in Bulgarian",
-  "additional_photos_needed": "What else to photograph for better ID"
-}`;
-
+    try { fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64')); relativeUrl = `images/uploads/${fileName}`; } catch (e) { console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message); relativeUrl = ''; }
+    const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{\n  "likely_scientific_name": "Latin name",\n  "likely_common_name_bg": "Bulgarian name",\n  "family": "Botanical family in Latin or Bulgarian",\n  "confidence": 0.9,\n  "identification_level": "species",\n  "visible_features": "Description in Bulgarian",\n  "possible_lookalikes": "Similar plants",\n  "safety_note": "Toxicity or warnings in Bulgarian",\n  "additional_photos_needed": "What else to photograph for better ID"\n}`;
     let aiData;
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: {
-          parts: [
-            { inlineData: { data: base64Image, mimeType } },
-            { text: prompt }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
+      const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64Image, mimeType } }, { text: prompt }] }, config: { responseMimeType: "application/json" } });
       aiData = JSON.parse(response.text);
     } catch (geminiErr) {
-      if (kiloApiKey) {
-        console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message);
-        const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType);
-        const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
-        aiData = JSON.parse(cleanedText);
-      } else {
-        throw geminiErr;
-      }
+      if (kiloApiKey) { console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message); const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType); const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim(); aiData = JSON.parse(cleanedText); } else { throw geminiErr; }
     }
-
     aiData.analyzed_at = new Date().toISOString();
-    
     res.json({ success: true, record: aiData, imageUrl: relativeUrl, base64: image });
-  } catch (error) {
-    console.error('Upload Error:', error);
-    res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' });
-  }
+  } catch (error) { console.error('Upload Error:', error); res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' }); }
 });
 
-// Sync User to Cloud SQL PostgreSQL
-app.post('/api/users/sync', async (req, res) => {
+app.post('/api/users/sync', moderateLimiter, async (req, res) => {
   try {
     const { uid, email, displayName, photoUrl } = req.body;
-    if (!uid || !email) {
-      return res.status(400).json({ error: 'Липсва uid или email' });
-    }
+    if (!uid || !email) return res.status(400).json({ error: 'Липсва uid или email' });
     const user = await getOrCreateUser(uid, email, displayName, photoUrl);
     res.json({ success: true, user });
-  } catch (err) {
-    console.error('User sync error:', err);
-    res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' });
-  }
+  } catch (err) { console.error('User sync error:', err); res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' }); }
 });
 
-// Cloud SQL Drive Import Logger
-app.post('/api/drive/log', async (req, res) => {
+app.post('/api/drive/log', moderateLimiter, async (req, res) => {
   try {
     const { fileId, fileName, mimeType, userUid } = req.body;
-    if (!fileId || !fileName) {
-      return res.status(400).json({ error: 'Липсва fileId или fileName' });
-    }
+    if (!fileId || !fileName) return res.status(400).json({ error: 'Липсва fileId или fileName' });
     const log = await logDriveImport(fileId, fileName, mimeType, userUid);
     res.json({ success: true, log });
-  } catch (err) {
-    console.error('Drive log error:', err);
-    res.status(500).json({ error: err.message || 'Грешка при запис на Drive импорт' });
-  }
+  } catch (err) { console.error('Drive log error:', err); res.status(500).json({ error: err.message || 'Грешка при запис на Drive импорт' }); }
 });
 
-// AI Provider Status endpoint
-app.get('/api/ai/status', (req, res) => {
+app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey, kiloConfigured: !!kiloApiKey, kiloModel: kiloModel }); });
+
+// Public, read-only config for the browser to bootstrap Supabase Auth.
+// Only ever returns the publishable (anon-equivalent) key, never the
+// service-role key or any other secret.
+app.get('/api/config', staticAssetLimiter, (req, res) => {
   res.json({
-    geminiConfigured: !!apiKey,
-    kiloConfigured: !!kiloApiKey,
-    kiloModel: kiloModel
+    supabaseUrl: process.env.SUPABASE_URL || null,
+    supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || null,
   });
 });
 
-// Fallback for missing images
-app.use(async (req, res, next) => {
-  if (req.path.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)) {
-    const filename = path.basename(req.path);
-    
-    // Check locally first
-    const possiblePaths = [
-      path.join(__dirname, req.path), 
-      path.join(__dirname, filename),
-      path.join(__dirname, 'images', 'review', filename),
-      path.join(__dirname, 'images', 'herbarium', filename),
-      path.join(__dirname, 'images', 'uploads', filename)
-    ];
-    
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        return res.sendFile(p);
-      }
+// Convenience-only endpoint so the UI can display the caller's own role.
+// Reuses the same Task 6 authorization middleware; grants no additional
+// access and does not bypass requireCatalogWritePermission on writes.
+app.get('/api/auth/whoami', moderateLimiter, authenticateCatalogActor, (req, res) => {
+  res.json({ id: req.catalogActor.id, email: req.catalogActor.email, role: req.catalogActor.role });
+});
+
+// Secure local photo upload: editor/admin only, validated server-side,
+// stored in Supabase Storage under a plant-scoped object key, then
+// appended to the plant's existing photos array. Anonymous -> 401,
+// viewer -> 403 (enforced by the same Task 6 middleware used for /api/plants).
+app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image provided.', code: 'IMAGE_REQUIRED' });
+
+    const existingPlants = await getSupabasePlants();
+    const targetPlant = existingPlants.find((plant) => plant.id === req.params.id);
+    if (!targetPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+
+    const stored = await storePlantImage(req.params.id, image);
+    const currentPhotos = Array.isArray(targetPlant.photos) ? targetPlant.photos : [];
+    const updatedPlant = await updateSupabasePlant(req.params.id, { photos: [...currentPhotos, stored.imageUrl] });
+    if (!updatedPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+
+    return res.status(201).json({ success: true, imageUrl: stored.imageUrl, objectKey: stored.objectKey, plant: updatedPlant });
+  } catch (error) {
+    if (/Invalid image|Invalid plant id|MB after decoding|does not match its declared/.test(error.message)) {
+      return res.status(400).json({ error: error.message, code: 'INVALID_IMAGE' });
     }
-
-    // Try multiple GitHub paths
-    const githubPaths = [
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main${req.path}`,
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/${filename}`,
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/images/review/${filename}`,
-      `https://raw.githubusercontent.com/Bocko2727/digitalflora/main/images/herbarium/${filename}`
-    ];
-
-    for (const url of githubPaths) {
-      try {
-        const fetchRes = await fetch(url);
-        if (fetchRes.ok) {
-          res.setHeader('Content-Type', fetchRes.headers.get('content-type') || 'image/jpeg');
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          const arrayBuffer = await fetchRes.arrayBuffer();
-          return res.send(Buffer.from(arrayBuffer));
-        }
-      } catch (e) {}
+    if (/Storage server configuration|persist image/.test(error.message)) {
+      return res.status(502).json({ error: 'Image storage is temporarily unavailable.', code: 'STORAGE_UNAVAILABLE' });
     }
-
-    // Fallback SVG placeholder
-    res.setHeader('Content-Type', 'image/svg+xml');
-    return res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect width="400" height="400" fill="#dde4dc"/><text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#667067" text-anchor="middle" dy=".3em">Снимката липсва</text><text x="50%" y="58%" font-family="monospace" font-size="12" fill="#888" text-anchor="middle">${filename}</text></svg>`);
-  }
-  next();
-});
-
-// Health checks for Cloud Run & load balancers
-app.get(['/health', '/healthz'], (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime() });
-});
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled Express error:', err);
-  if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal Server Error' });
+    return next(error);
   }
 });
+
+// Fallback for missing images: only ever resolves against the fixed
+// allowlisted image directories or the SSRF-safe remote fetch helper.
+// Never joins raw req.path onto __dirname.
+app.use(staticAssetLimiter, async (req, res, next) => {
+  if (!/\.(png|jpe?g|gif|svg|webp)$/i.test(req.path)) return next();
+  const filename = path.basename(req.path);
+  const localPath = resolveSafeImagePath(filename);
+  if (localPath) return res.sendFile(localPath);
+  const remote = await fetchAllowedGithubImage(filename);
+  if (remote) { res.setHeader('Content-Type', remote.contentType); res.setHeader('Cache-Control', 'public, max-age=86400'); return res.send(remote.buffer); }
+  res.setHeader('Content-Type', 'image/svg+xml');
+  return res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect width="400" height="400" fill="#dde4dc"/><text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#667067" text-anchor="middle" dy=".3em">Снимката липсва</text><text x="50%" y="58%" font-family="monospace" font-size="12" fill="#888" text-anchor="middle">${escapeXml(filename)}</text></svg>`);
+});
+
+app.get(['/health', '/healthz'], (req, res) => { res.status(200).json({ status: 'ok', uptime: process.uptime() }); });
+
+app.get('/', staticAssetLimiter, (req, res) => { res.sendFile(path.join(__dirname, 'index.html'), { dotfiles: 'deny' }); });
+
+app.use((err, req, res, next) => { console.error('Unhandled Express error:', err); if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' }); });
 
 const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => {
-  console.log(`Server running at http://${HOST}:${PORT}`);
-  // Run non-blocking seed in background
-  seedPlantsIfEmpty().catch(e => {
-    console.error('Background seed error:', e);
-  });
-});
+const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); seedPlantsIfEmpty().catch(e => { console.error('Background seed error:', e); }); });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });

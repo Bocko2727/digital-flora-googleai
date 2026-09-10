@@ -721,6 +721,23 @@ function authHeaders() {
 }
 window.authHeaders = authHeaders;
 
+// Resolves a stored photo reference to a displayable URL. New uploads
+// (Task 7) store full https:// Supabase Storage URLs directly; legacy
+// entries store bare filenames that need the old string-transform.
+function resolvePhotoUrl(rawPhoto) {
+  if (!rawPhoto) return '/icon.svg';
+  if (/^https?:\/\//i.test(rawPhoto) || rawPhoto.startsWith('data:image')) return rawPhoto;
+  const storageBase = 'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+  const fileName = rawPhoto
+    .replace(/^\/+/, '')
+    .replace(/^images\/review\//, '')
+    .replace(/^images\//, '')
+    .replace(/^review\//, '')
+    .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
+  return fileName ? storageBase + encodeURIComponent(fileName) : '/icon.svg';
+}
+window.resolvePhotoUrl = resolvePhotoUrl;
+
 function roleCanWrite(role) {
   return role === 'editor' || role === 'admin';
 }
@@ -1094,21 +1111,7 @@ window.loadMorePlants = function() {
 const cardsHtml = chunk.map((p, idx) => {
   const globalIdx = start + idx;
 
-  const firstPhoto = p.photos[0] || '';
-
-  const storageBase =
-    'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
-
-const fileName = firstPhoto
-  .replace(/^\/+/, '')
-  .replace(/^images\/review\//, '')
-  .replace(/^images\//, '')
-  .replace(/^review\//, '')
-  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
-
-  const imgPath = fileName
-    ? storageBase + encodeURIComponent(fileName)
-    : '/icon.svg';
+  const imgPath = resolvePhotoUrl(p.photos[0] || '');
 
   return `
       <div class="plant-card" onclick="openPlant(${globalIdx})">
@@ -1281,22 +1284,8 @@ window.drawModal = function() {
   if (!p) return;
   const a = p.photos;
   const multi = a.length > 1;
- const curPhoto = a[photo] || '';
-
-const storageBase =
-  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
-
-const fileName = curPhoto
-  .replace(/^\/+/, '')
-  .replace(/^images\/review\//, '')
-  .replace(/^images\//, '')
-  .replace(/^review\//, '')
-  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
-
-
-const imgPath = fileName
-  ? storageBase + encodeURIComponent(fileName)
-  : '/icon.svg';
+  const curPhoto = a[photo] || '';
+  const imgPath = resolvePhotoUrl(curPhoto);
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 
@@ -1402,19 +1391,7 @@ window.runQA = async function() {
 window.editPlant = function() {
   const p = window.filteredPlants[n];
   const curPhoto = p.photos[photo] || '';
- const storageBase =
-  'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
-
-const fileName = curPhoto
-  .replace(/^\/+/, '')
-  .replace(/^images\/review\//, '')
-  .replace(/^images\//, '')
-  .replace(/^review\//, '')
-  .replace(/^IMG(\d+\.(?:jpe?g|png))$/i, 'IMG_$1');
-
-const imgPath = fileName
-  ? storageBase + encodeURIComponent(fileName)
-  : '/icon.svg';
+  const imgPath = resolvePhotoUrl(curPhoto);
   const viewEl = document.getElementById('view');
   if (!viewEl) return;
 
@@ -1475,7 +1452,13 @@ const imgPath = fileName
           <label>Любопитен факт</label>
           <textarea id="e_fact" rows="2">${p.funFact}</textarea>
         </div>
-        
+
+        <div class="form-group">
+          <label>Снимки (${(p.photos || []).length} качени)</label>
+          <input type="file" id="e_photo_input" accept="image/jpeg,image/png,image/webp" multiple onchange="uploadPlantPhotos('${p.id}', event)">
+          <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
+        </div>
+
         <button onclick="savePlant('${p.id}', event)" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
       </div>
     </article>
@@ -1563,6 +1546,80 @@ window.deletePlant = async function(id) {
   } catch (e) {
     alert("Грешка при изтриване: " + e.message);
   }
+};
+
+// Secure local photo upload for an existing plant record (Task 7).
+// Reuses the same client-side downscale-to-JPEG approach as the AI
+// upload flow, but posts to the dedicated, Storage-backed endpoint and
+// never touches Gemini/Kilo. Runs sequentially so errors are attributable
+// to a specific file, and multi-select is supported without extra
+// complexity in the security flow (one authenticated request per file).
+function readFileAsResizedDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Неуспешно четене на файла.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Файлът не е валидно изображение.'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const max_size = 1600;
+        if (width > height) {
+          if (width > max_size) { height *= max_size / width; width = max_size; }
+        } else {
+          if (height > max_size) { width *= max_size / height; height = max_size; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+window.uploadPlantPhotos = async function(plantId, event) {
+  const files = event && event.target && event.target.files ? Array.from(event.target.files) : [];
+  const statusEl = document.getElementById('photoUploadStatus');
+  if (!files.length) return;
+
+  const MAX_CLIENT_BYTES = 5 * 1024 * 1024;
+  let uploaded = 0;
+  let failed = 0;
+
+  for (const file of files) {
+    if (statusEl) statusEl.textContent = `⏳ Качване на ${uploaded + failed + 1} от ${files.length}...`;
+    try {
+      if (file.size > MAX_CLIENT_BYTES) throw new Error('Файлът е по-голям от 5 MB.');
+      const dataUri = await readFileAsResizedDataUri(file);
+      const res = await fetch(`/api/plants/${encodeURIComponent(plantId)}/photos`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ image: dataUri })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Грешка при качване (HTTP ${res.status}).`);
+      uploaded += 1;
+      const p = window.filteredPlants[n];
+      if (p && payload.plant && Array.isArray(payload.plant.photos)) {
+        p.photos = payload.plant.photos;
+      }
+    } catch (err) {
+      failed += 1;
+      console.error('Photo upload error:', err);
+      if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+    }
+  }
+
+  if (statusEl && !failed) statusEl.textContent = `✅ Качени ${uploaded} снимка(и).`;
+  else if (statusEl && failed) statusEl.textContent = `⚠️ Качени ${uploaded}, неуспешни ${failed}.`;
+
+  if (event && event.target) event.target.value = '';
+  editPlant();
 };
 
 // PWA Service Worker Registration

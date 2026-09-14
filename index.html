@@ -1208,13 +1208,12 @@ window.uploadPlant = async function uploadPlant(event) {
     if (status) status.style.display = 'none';
     
     const record = result.record;
-    const storedImageUrl = result.imageUrl || result.base64;
-    
+
     const pData = {
       commonName: record.likely_common_name_bg || 'Неопределено растение',
       latinName: record.likely_scientific_name || 'Неопределен таксон',
       family: record.family || 'Семейство',
-      photos: [storedImageUrl],
+      photos: [],
       confidence: (() => {
         if (typeof record.confidence === 'number') {
           const pct = Math.round(record.confidence * 100) + '%';
@@ -1234,7 +1233,14 @@ window.uploadPlant = async function uploadPlant(event) {
       authorEmail: window.currentUser ? window.currentUser.email : 'Анонимен ботаник',
       authorUid: window.currentUser ? window.currentUser.uid : null
     };
-    
+
+    // Task 0.1: two-step create -> Storage-upload flow. The plant record is
+    // created first without photos so we have a stable id, then the
+    // already-resized image is sent to the Storage-backed
+    // /api/plants/:id/photos endpoint, which uploads it to Supabase Storage
+    // and appends the real https:// URL to photos[]. This replaces the
+    // previous behaviour of storing a local disk path or a raw base64
+    // string as the photo reference.
     const createRes = await fetch('/api/plants', {
       method: 'POST',
       headers: authHeaders(),
@@ -1244,7 +1250,30 @@ window.uploadPlant = async function uploadPlant(event) {
       const payload = await createRes.json().catch(() => ({}));
       throw new Error(payload.error || 'Грешка при запис на растението.');
     }
+    const createdPayload = await createRes.json().catch(() => ({}));
+    const newPlantId = createdPayload && createdPayload.plant ? createdPayload.plant.id : null;
 
+    if (newPlantId) {
+      if (status) {
+        status.style.display = 'block';
+        status.innerText = '⏳ Качване на снимката в Storage...';
+      }
+      try {
+        const photoRes = await fetch(`/api/plants/${encodeURIComponent(newPlantId)}/photos`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ image: base64String })
+        });
+        if (!photoRes.ok) {
+          const photoPayload = await photoRes.json().catch(() => ({}));
+          console.warn('Качването в Storage е неуспешно:', photoPayload.error || photoRes.status);
+        }
+      } catch (photoErr) {
+        console.warn('Качването в Storage е неуспешно:', photoErr.message);
+      }
+    }
+
+    if (status) status.style.display = 'none';
     await loadPlants();
     window.openPlant(0);
     

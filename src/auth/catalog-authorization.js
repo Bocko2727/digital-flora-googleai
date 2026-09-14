@@ -14,7 +14,7 @@ function authorizationToken(req) {
     const header = req.get('authorization') || '';
     if (!/^Bearer /i.test(header)) return null;
     return header.slice(7).trim() || null;
-
+}
 function serverConfigurationError(code) {
     const error = new Error('Supabase authorization server configuration is unavailable.');
     error.code = code;

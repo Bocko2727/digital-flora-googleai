@@ -589,7 +589,7 @@
   </div>
 </header>
 
-<input type="file" id="uploadInput" accept="image/*" style="display:none" onchange="uploadPlant(event)">
+<input type="file" id="uploadInput" accept="image/*" multiple style="display:none" onchange="uploadPlant(event)">
 <div id="uploadStatus">⏳ AI ботаникът анализира и съхранява снимката...</div>
 
 <div class="controls">
@@ -1149,141 +1149,157 @@ if (loadTrigger) {
   observer.observe(loadTrigger);
 }
 
-// Upload Plant Feature
-window.uploadPlant = async function uploadPlant(event) {
-  const file = event && event.target && event.target.files ? event.target.files[0] : null;
-  if (!file) return;
-  
-  const status = document.getElementById('uploadStatus');
-  if (status) {
-    status.style.display = 'block';
-    status.innerText = '⏳ AI ботаникът анализира и съхранява снимката...';
-  }
-  
-  try {
-    const base64String = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const max_size = 900;
-          
-          if (width > height) {
-            if (width > max_size) {
-              height *= max_size / width;
-              width = max_size;
-            }
-          } else {
-            if (height > max_size) {
-              width *= max_size / height;
-              height = max_size;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
-        };
-        img.src = e.target.result;
+// Resizes an image file to a JPEG data URI for AI analysis and Storage
+// upload. Shared by the single-file and batch (Task 0.2) upload paths so
+// both follow identical resize parameters.
+function resizeImageForAiUpload(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Неуспешно четене на файла.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Файлът не е валидно изображение.'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const max_size = 900;
+        if (width > height) {
+          if (width > max_size) { height *= max_size / width; width = max_size; }
+        } else {
+          if (height > max_size) { width *= max_size / height; height = max_size; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
-      reader.readAsDataURL(file);
-    });
-
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64String })
-    });
-    
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Грешка при анализа на снимката.');
-    }
-    
-    const result = await res.json();
-    if (status) status.style.display = 'none';
-    
-    const record = result.record;
-
-    const pData = {
-      commonName: record.likely_common_name_bg || 'Неопределено растение',
-      latinName: record.likely_scientific_name || 'Неопределен таксон',
-      family: record.family || 'Семейство',
-      photos: [],
-      confidence: (() => {
-        if (typeof record.confidence === 'number') {
-          const pct = Math.round(record.confidence * 100) + '%';
-          if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
-          if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
-          return 'Неопределимо (AI ' + pct + ')';
-        }
-        return 'Вероятно (AI Анализ)';
-      })(),
-      recognition: record.visible_features || 'Няма данни',
-      habitat: 'Автоматично разпознато местообитание',
-      lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
-      benefits: 'Потенциална екологична роля',
-      risks: record.safety_note || 'Внимание',
-      uses: 'AI фотографско наблюдение',
-      funFact: Array.isArray(record.additional_photos_needed) ? record.additional_photos_needed.join(', ') : (record.additional_photos_needed || '-'),
-      authorEmail: window.currentUser ? window.currentUser.email : 'Анонимен ботаник',
-      authorUid: window.currentUser ? window.currentUser.uid : null
+      img.src = e.target.result;
     };
+    reader.readAsDataURL(file);
+  });
+}
 
-    // Task 0.1: two-step create -> Storage-upload flow. The plant record is
-    // created first without photos so we have a stable id, then the
-    // already-resized image is sent to the Storage-backed
-    // /api/plants/:id/photos endpoint, which uploads it to Supabase Storage
-    // and appends the real https:// URL to photos[]. This replaces the
-    // previous behaviour of storing a local disk path or a raw base64
-    // string as the photo reference.
-    const createRes = await fetch('/api/plants', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify(pData)
-    });
-    if (!createRes.ok) {
-      const payload = await createRes.json().catch(() => ({}));
-      throw new Error(payload.error || 'Грешка при запис на растението.');
-    }
-    const createdPayload = await createRes.json().catch(() => ({}));
-    const newPlantId = createdPayload && createdPayload.plant ? createdPayload.plant.id : null;
+// Processes one selected file end-to-end: AI analysis -> create plant
+// record (no photos yet) -> upload the same resized image to the
+// Storage-backed /api/plants/:id/photos endpoint. Throws on the AI
+// analysis or plant-creation step (fatal for this file); a failed Storage
+// upload is logged but does not fail the whole file, matching the 0.1
+// single-upload behaviour.
+async function processOnePlantUpload(file) {
+  const base64String = await resizeImageForAiUpload(file);
 
-    if (newPlantId) {
-      if (status) {
-        status.style.display = 'block';
-        status.innerText = '⏳ Качване на снимката в Storage...';
-      }
-      try {
-        const photoRes = await fetch(`/api/plants/${encodeURIComponent(newPlantId)}/photos`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ image: base64String })
-        });
-        if (!photoRes.ok) {
-          const photoPayload = await photoRes.json().catch(() => ({}));
-          console.warn('Качването в Storage е неуспешно:', photoPayload.error || photoRes.status);
-        }
-      } catch (photoErr) {
-        console.warn('Качването в Storage е неуспешно:', photoErr.message);
-      }
-    }
-
-    if (status) status.style.display = 'none';
-    await loadPlants();
-    window.openPlant(0);
-    
-  } catch (err) {
-    if (status) {
-      status.innerText = '❌ Грешка: ' + err.message;
-      setTimeout(() => { status.style.display = 'none'; }, 6000);
-    }
-    console.error(err);
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64String })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Грешка при анализа на снимката.');
   }
+  const result = await res.json();
+  const record = result.record;
+
+  const pData = {
+    commonName: record.likely_common_name_bg || 'Неопределено растение',
+    latinName: record.likely_scientific_name || 'Неопределен таксон',
+    family: record.family || 'Семейство',
+    photos: [],
+    confidence: (() => {
+      if (typeof record.confidence === 'number') {
+        const pct = Math.round(record.confidence * 100) + '%';
+        if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
+        if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
+        return 'Неопределимо (AI ' + pct + ')';
+      }
+      return 'Вероятно (AI Анализ)';
+    })(),
+    recognition: record.visible_features || 'Няма данни',
+    habitat: 'Автоматично разпознато местообитание',
+    lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
+    benefits: 'Потенциална екологична роля',
+    risks: record.safety_note || 'Внимание',
+    uses: 'AI фотографско наблюдение',
+    funFact: Array.isArray(record.additional_photos_needed) ? record.additional_photos_needed.join(', ') : (record.additional_photos_needed || '-'),
+    authorEmail: window.currentUser ? window.currentUser.email : 'Анонимен ботаник',
+    authorUid: window.currentUser ? window.currentUser.uid : null
+  };
+
+  const createRes = await fetch('/api/plants', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(pData)
+  });
+  if (!createRes.ok) {
+    const payload = await createRes.json().catch(() => ({}));
+    throw new Error(payload.error || 'Грешка при запис на растението.');
+  }
+  const createdPayload = await createRes.json().catch(() => ({}));
+  const newPlantId = createdPayload && createdPayload.plant ? createdPayload.plant.id : null;
+
+  if (newPlantId) {
+    try {
+      const photoRes = await fetch(`/api/plants/${encodeURIComponent(newPlantId)}/photos`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ image: base64String })
+      });
+      if (!photoRes.ok) {
+        const photoPayload = await photoRes.json().catch(() => ({}));
+        console.warn(`Снимка "${file.name}": качването в Storage е неуспешно:`, photoPayload.error || photoRes.status);
+      }
+    } catch (photoErr) {
+      console.warn(`Снимка "${file.name}": качването в Storage е неуспешно:`, photoErr.message);
+    }
+  }
+}
+
+// Upload Plant Feature (Task 0.1 single file + Task 0.2 bulk upload).
+// Files are processed sequentially, NOT via Promise.all, so progress is
+// reported per file and one failing file (bad image, AI error, etc.)
+// logs an error and continues to the next file instead of aborting the
+// whole batch.
+window.uploadPlant = async function uploadPlant(event) {
+  const files = event && event.target && event.target.files ? Array.from(event.target.files) : [];
+  if (!files.length) return;
+
+  const status = document.getElementById('uploadStatus');
+  const total = files.length;
+  let succeeded = 0;
+  const failedFiles = [];
+
+  for (let index = 0; index < total; index++) {
+    const file = files[index];
+    if (status) {
+      status.style.display = 'block';
+      status.innerText = `⏳ Обработва се ${index + 1} от ${total}: "${file.name}"...`;
+    }
+    try {
+      await processOnePlantUpload(file);
+      succeeded += 1;
+    } catch (err) {
+      failedFiles.push(file.name);
+      console.error(`Грешка при обработка на "${file.name}":`, err);
+    }
+  }
+
+  if (status) {
+    if (!failedFiles.length) {
+      status.innerText = total === 1
+        ? '✅ Растението е добавено успешно.'
+        : `✅ Обработени успешно ${succeeded} от ${total} снимки.`;
+    } else {
+      status.innerText = `⚠️ Обработени ${succeeded} от ${total}. Неуспешни: ${failedFiles.join(', ')}.`;
+    }
+    setTimeout(() => { status.style.display = 'none'; }, 6000);
+  }
+
+  if (event && event.target) event.target.value = '';
+
+  await loadPlants();
+  if (succeeded > 0) window.openPlant(0);
 };
 
 // Modal functions

@@ -247,7 +247,7 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
     if (!targetPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
 
     const stored = await storePlantImage(req.params.id, image);
-    const currentPhotos = Array.isArray(targetPlant.photos) ? targetPlant.photos : [];
+    const currentPhotos = (Array.isArray(targetPlant.photos) ? targetPlant.photos : []).filter((p) => p && p !== 'placeholder.jpg');
     const updatedPlant = await updateSupabasePlant(req.params.id, { photos: [...currentPhotos, stored.imageUrl] });
     if (!updatedPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
 

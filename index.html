@@ -1401,14 +1401,23 @@ window.drawModal = function() {
 };
 
 // QA Verification
-window.runQA = async function() {
-  const p = window.filteredPlants[n];
-  const curPhoto = p.photos[photo] || '';
-  const imgPath = resolvePhotoUrl(curPhoto);
-  const viewEl = document.getElementById('view');
-  if (!viewEl) return;
+// БЕШЕ: window.runQA = async function() { ...edit form код... };
+// СТАВА:
 
-  viewEl.innerHTML = `
+  // === FIX за Day 2 известния бъг: editPlant() vs runQA() размяна ===
+  // Замести целия стар "window.runQA = async function() {...}" блок
+  // (онзи, който рендерираше edit формата) с ДВЕТЕ функции по-долу.
+
+  // 1) Преименувано: това е СЪЩОТО тяло, което преди грешно се казваше runQA.
+  //    Вика се от "✏️ Редакция" бутона и от края на uploadPlantPhotos().
+  window.editPlant = async function () {
+    const p = window.filteredPlants[n];
+    const curPhoto = p.photos[photo] || '';
+    const imgPath = resolvePhotoUrl(curPhoto);
+    const viewEl = document.getElementById('view');
+    if (!viewEl) return;
+
+    viewEl.innerHTML = `
     <article class="layout">
       <div class="photo-column">
         <div class="photo-wrap">
@@ -1420,7 +1429,7 @@ window.runQA = async function() {
           <h2 style="margin:0;">Редакция на образец</h2>
           <button onclick="drawModal()" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Отказ</button>
         </div>
-        
+
         <div class="form-group">
           <label>Българско име</label>
           <input type="text" id="e_cname" value="${p.commonName.replace(/"/g, '&quot;')}">
@@ -1476,7 +1485,50 @@ window.runQA = async function() {
       </div>
     </article>
   `;
-};
+  };
+
+  // 2) НОВА, истинска QA верификация — вика реалния /api/qa бекенд endpoint.
+  //    Пълни #qa-result вътре в текущия drawModal() изглед, без да го изтрива целия.
+  window.runQA = async function () {
+    const p = window.filteredPlants[n];
+    const resultEl = document.getElementById('qa-result');
+    if (!p || !resultEl) return;
+
+    resultEl.textContent = '⏳ AI ботаникът проверява снимката...';
+    try {
+      const curPhoto = p.photos[photo] || '';
+      const imgUrl = resolvePhotoUrl(curPhoto);
+
+      // Бекендът приема filename като локален path, allowed GitHub URL,
+      // ИЛИ data:image base64 URI (трети fallback клон в /api/qa).
+      // Текущите Supabase Storage URL-и не минават през първите два клона,
+      // затова винаги пращаме base64 data URI — универсално съвместимо.
+      const imgRes = await fetch(imgUrl);
+      if (!imgRes.ok) throw new Error('Снимката не може да се зареди за проверка.');
+      const blob = await imgRes.blob();
+      const dataUri = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Неуспешно четене на снимката.'));
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+
+      const res = await fetch('/api/qa', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          filename: dataUri,
+          claimedName: p.commonName,
+          latinName: p.latinName
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Грешка (HTTP ${res.status}).`);
+      resultEl.textContent = data.verdict || 'Няма отговор от AI.';
+    } catch (err) {
+      resultEl.textContent = '❌ ' + err.message;
+    }
+  };
 
 window.savePlant = async function(id, ev) {
   const btn = ev ? ev.currentTarget || ev.target : null;

@@ -4,6 +4,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
@@ -21,6 +22,39 @@ const PORT = process.env.PORT || 3000;
 
 
 app.set('trust proxy', 1);
+
+// P1.1 (Ден 4 security hardening): script-src keeps 'unsafe-inline' for now
+// because index.html relies on 42+ inline onclick/onchange/oninput
+// attributes — CSP nonces only cover <script nonce> tags, not inline event
+// handler attributes, so a nonce-only policy would silently break every
+// button in the catalog. Migrating those handlers to addEventListener is
+// tracked as a separate, larger follow-up (not part of this commit).
+// esm.sh is the runtime import source for supabase-js (P2.3 still open:
+// vendoring it locally would let script-src drop this origin later);
+// apis.google.com is the legacy Drive-picker loader (out of scope, left
+// reachable rather than silently broken). connect-src/img-src include the
+// Supabase project host because supabase-js talks to Supabase Auth/Storage
+// directly from the browser.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://esm.sh', 'https://apis.google.com'],
+      // Helmet defaults script-src-attr to 'none', which blocks inline
+      // onclick/onchange/oninput attributes separately from script-src even
+      // with 'unsafe-inline' there — must be set explicitly or every button
+      // in the catalog breaks.
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
+      connectSrc: ["'self'", 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+}));
 
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;

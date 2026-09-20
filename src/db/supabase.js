@@ -14,6 +14,16 @@ const { Pool } = pg;
 // The read-only "Published catalog is publicly readable" RLS policy on
 // public.plants already grants full SELECT to anon/authenticated, so this
 // connection does not need special role handling for Task 4's read path.
+//
+// P1.3 (Ден 4 security hardening): TLS defaults to verify-full once
+// SUPABASE_DB_CA_CERT is set (the PEM contents of the CA certificate
+// downloaded from Supabase Dashboard -> Database Settings -> SSL
+// Configuration — see docs.supabase.com/guides/platform/ssl-enforcement;
+// there is no stable public URL for it, it must come from the dashboard).
+// Until that env var is set, this falls back to the previous relaxed
+// verification so existing deployments keep working unmodified.
+const caCert = process.env.SUPABASE_DB_CA_CERT;
+const sslConfig = caCert ? { ca: caCert, rejectUnauthorized: true } : { rejectUnauthorized: false };
 // fallow-ignore-next-line unused-export, complexity
 export const createSupabasePool = () => {
     if (!global._supabasePool && process.env.SUPABASE_DB_URL) {
@@ -22,10 +32,7 @@ export const createSupabasePool = () => {
                 connectionString: process.env.SUPABASE_DB_URL,
                 max: 10,
                 connectionTimeoutMillis: 5000,
-                // Supabase's pooled/direct Postgres endpoints require SSL. No custom
-                // CA bundle is configured for this project, so certificate hostname
-                // verification is relaxed rather than disabling TLS entirely.
-                ssl: { rejectUnauthorized: false },
+                ssl: sslConfig,
             });
 
             global._supabasePool.on('error', (err) => {

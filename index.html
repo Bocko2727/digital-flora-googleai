@@ -1115,6 +1115,17 @@
     }
     window.resolvePhotoUrl = resolvePhotoUrl;
 
+    // Escapes dynamic plant/user/AI-sourced text before it is interpolated
+    // into an innerHTML template string, to close the stored-XSS sinks in
+    // cardsHtml/drawModal/editPlant (a plant name/description containing
+    // markup must render as text, not execute).
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+    window.escapeHtml = escapeHtml;
+
     function roleCanWrite(role) {
       return role === 'editor' || role === 'admin';
     }
@@ -1464,7 +1475,7 @@
         if (famSelect) {
           famSelect.innerHTML = '<option value="">Всички семейства</option>';
           Array.from(families).sort().forEach(f => {
-            if (f) famSelect.innerHTML += `<option value="${f}">${f}</option>`;
+            if (f) famSelect.innerHTML += `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`;
           });
         }
         onFilterChange();
@@ -1584,13 +1595,13 @@
 
         return `
       <div class="plant-card" onclick="openPlant(${globalIdx})">
-        <img class="plant-card-img" src="${imgPath}" alt="${p.commonName}" loading="lazy" onerror="this.src='/icon.svg'">
+        <img class="plant-card-img" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" loading="lazy" onerror="this.src='/icon.svg'">
         <div class="plant-card-content">
-          <h3 class="plant-card-title">${p.commonName}</h3>
-          <div class="plant-card-latin">${p.latinName}</div>
-          <div class="plant-card-meta">📁 ${p.family || 'Непознато семейство'}</div>
+          <h3 class="plant-card-title">${escapeHtml(p.commonName)}</h3>
+          <div class="plant-card-latin">${escapeHtml(p.latinName)}</div>
+          <div class="plant-card-meta">📁 ${escapeHtml(p.family || 'Непознато семейство')}</div>
           <div class="plant-card-footer">
-            <span class="${sc(p.confidence)}">${(p.confidence || '').split('—')[0].trim()}</span>
+            <span class="${sc(p.confidence)}">${escapeHtml((p.confidence || '').split('—')[0].trim())}</span>
           </div>
         </div>
       </div>
@@ -1795,7 +1806,7 @@
     <article class="layout">
       <div class="photo-column">
         <div class="photo-wrap">
-          <img class="photo" src="${imgPath}" alt="${p.commonName}" onerror="this.src='/icon.svg'">
+          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" onerror="this.src='/icon.svg'">
         </div>
         ${multi ? `
           <div class="gallery">
@@ -1807,41 +1818,41 @@
       </div>
       <div class="info">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-          <h2>${p.commonName}</h2>
+          <h2>${escapeHtml(p.commonName)}</h2>
           <div style="display:flex; gap:8px;">
             <button onclick="editPlant()" style="background:var(--hover-bg); color:var(--ink); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
             <button onclick="deletePlant('${p.id}')" style="background:var(--badge-unc-bg); color:var(--red); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
           </div>
         </div>
-        <div class="latin">${p.latinName}</div>
-        <span class="${sc(p.confidence)}">${p.confidence}</span>
-        
+        <div class="latin">${escapeHtml(p.latinName)}</div>
+        <span class="${sc(p.confidence)}">${escapeHtml(p.confidence)}</span>
+
         <div class="meta">
-          <div><b>Семейство</b>${p.family || 'Неизвестно'}</div>
+          <div><b>Семейство</b>${escapeHtml(p.family || 'Неизвестно')}</div>
           <div><b>Статус</b>Наблюдаван образец</div>
         </div>
-        
+
         <h3>Разпознаване (диагностични белези)</h3>
-        <p>${p.recognition}</p>
-        <p><b>Местообитание и разпространение:</b> ${p.habitat}</p>
-        <p><b>Възможни двойници:</b> ${p.lookalikes}</p>
-        
+        <p>${escapeHtml(p.recognition)}</p>
+        <p><b>Местообитание и разпространение:</b> ${escapeHtml(p.habitat)}</p>
+        <p><b>Възможни двойници:</b> ${escapeHtml(p.lookalikes)}</p>
+
         <h3>Ползи и екологична роля</h3>
-        <p>${p.benefits}</p>
-        
+        <p>${escapeHtml(p.benefits)}</p>
+
         <h3>Вреди и рискове (токсичност)</h3>
-        <p>${p.risks}</p>
-        
+        <p>${escapeHtml(p.risks)}</p>
+
         <h3>Традиционни и съвременни употреби</h3>
-        <p>${p.uses}</p>
-        
+        <p>${escapeHtml(p.uses)}</p>
+
         <h3>Любопитен факт</h3>
-        <p>${p.funFact}</p>
-        
+        <p>${escapeHtml(p.funFact)}</p>
+
         <div class="note">
           <b>Забележка за точност:</b> При „Вероятно“ и „Неопределимо“ липсват един или повече диагностични белези. Не използвай записа за ядливост, самолечение или бране от природата.
         </div>
-        <div class="sources"><b>Източници:</b> ${src}</div>
+        <div class="sources"><b>Източници:</b> ${escapeHtml(src)}</div>
         
         <div class="qa-box">
           <h3 style="margin:0 0 4px 0; color:var(--blue); font-size:15px;">🔍 Интерактивен QA Контрол</h3>
@@ -1867,7 +1878,7 @@
     <article class="layout">
       <div class="photo-column">
         <div class="photo-wrap">
-          <img class="photo" src="${imgPath}" alt="${p.commonName}" onerror="this.src='/icon.svg'">
+          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" onerror="this.src='/icon.svg'">
         </div>
       </div>
       <div class="info">
@@ -1878,47 +1889,47 @@
 
         <div class="form-group">
           <label>Българско име</label>
-          <input type="text" id="e_cname" value="${p.commonName.replace(/"/g, '&quot;')}">
+          <input type="text" id="e_cname" value="${escapeHtml(p.commonName)}">
         </div>
         <div class="form-group">
           <label>Латинско име</label>
-          <input type="text" id="e_lname" value="${p.latinName.replace(/"/g, '&quot;')}">
+          <input type="text" id="e_lname" value="${escapeHtml(p.latinName)}">
         </div>
         <div class="form-group">
           <label>Семейство</label>
-          <input type="text" id="e_fam" value="${p.family.replace(/"/g, '&quot;')}">
+          <input type="text" id="e_fam" value="${escapeHtml(p.family)}">
         </div>
         <div class="form-group">
           <label>Статус на сигурност</label>
-          <input type="text" id="e_conf" value="${p.confidence.replace(/"/g, '&quot;')}">
+          <input type="text" id="e_conf" value="${escapeHtml(p.confidence)}">
         </div>
         <div class="form-group">
           <label>Разпознаване (диагностични белези)</label>
-          <textarea id="e_rec" rows="3">${p.recognition}</textarea>
+          <textarea id="e_rec" rows="3">${escapeHtml(p.recognition)}</textarea>
         </div>
         <div class="form-group">
           <label>Местообитание и разпространение</label>
-          <textarea id="e_hab" rows="2">${p.habitat}</textarea>
+          <textarea id="e_hab" rows="2">${escapeHtml(p.habitat)}</textarea>
         </div>
         <div class="form-group">
           <label>Възможни двойници</label>
-          <input type="text" id="e_look" value="${p.lookalikes.replace(/"/g, '&quot;')}">
+          <input type="text" id="e_look" value="${escapeHtml(p.lookalikes)}">
         </div>
         <div class="form-group">
           <label>Ползи / Екологична роля</label>
-          <textarea id="e_ben" rows="2">${p.benefits}</textarea>
+          <textarea id="e_ben" rows="2">${escapeHtml(p.benefits)}</textarea>
         </div>
         <div class="form-group">
           <label>Вреди и рискове (токсичност)</label>
-          <textarea id="e_risk" rows="2">${p.risks}</textarea>
+          <textarea id="e_risk" rows="2">${escapeHtml(p.risks)}</textarea>
         </div>
         <div class="form-group">
           <label>Употреби (традиционни/съвременни)</label>
-          <textarea id="e_use" rows="2">${p.uses || ''}</textarea>
+          <textarea id="e_use" rows="2">${escapeHtml(p.uses || '')}</textarea>
         </div>
         <div class="form-group">
           <label>Любопитен факт</label>
-          <textarea id="e_fact" rows="2">${p.funFact}</textarea>
+          <textarea id="e_fact" rows="2">${escapeHtml(p.funFact)}</textarea>
         </div>
 
         <div class="form-group">

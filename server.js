@@ -29,17 +29,17 @@ app.set('trust proxy', 1);
 // handler attributes, so a nonce-only policy would silently break every
 // button in the catalog. Migrating those handlers to addEventListener is
 // tracked as a separate, larger follow-up (not part of this commit).
-// esm.sh is the runtime import source for supabase-js (P2.3 still open:
-// vendoring it locally would let script-src drop this origin later);
-// apis.google.com is the legacy Drive-picker loader (out of scope, left
-// reachable rather than silently broken). connect-src/img-src include the
-// Supabase project host because supabase-js talks to Supabase Auth/Storage
-// directly from the browser.
+// supabase-js is vendored locally (P2.3, vendor/supabase-js.umd.js) rather
+// than imported at runtime from esm.sh, so script-src does not need that
+// CDN origin. apis.google.com is the legacy Drive-picker loader (out of
+// scope, left reachable rather than silently broken). connect-src/img-src
+// include the Supabase project host because supabase-js talks to Supabase
+// Auth/Storage directly from the browser.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://esm.sh', 'https://apis.google.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://apis.google.com'],
       // Helmet defaults script-src-attr to 'none', which blocks inline
       // onclick/onchange/oninput attributes separately from script-src even
       // with 'unsafe-inline' there — must be set explicitly or every button
@@ -149,6 +149,10 @@ app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
 const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
 app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
+
+// P2.3: vendored @supabase/supabase-js UMD bundle (see vendor/supabase-js.umd.js
+// header) served same-origin instead of a runtime esm.sh CDN import.
+app.use('/vendor', staticAssetLimiter, express.static(path.join(__dirname, 'vendor'), { dotfiles: 'deny', index: false }));
 
 
 app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));

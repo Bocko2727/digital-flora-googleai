@@ -1167,6 +1167,20 @@
       if (event && event.target && event.target.id === 'authPanel') closeAuthPanel();
     };
 
+    // Loads the vendored, version-pinned @supabase/supabase-js UMD bundle
+    // (P2.3: same-origin static file instead of a runtime esm.sh CDN
+    // import) and returns the global it attaches to `window`.
+    function loadSupabaseJs() {
+      if (window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/vendor/supabase-js.umd.js';
+        script.onload = () => resolve(window.supabase);
+        script.onerror = () => reject(new Error('Неуспешно зареждане на Supabase SDK.'));
+        document.head.appendChild(script);
+      });
+    }
+
     async function initSupabaseAuth() {
       try {
         const configRes = await fetch('/api/config');
@@ -1176,7 +1190,7 @@
           console.warn('Supabase Auth не е конфигуриран на сървъра. Входът остава недостъпен.');
           return;
         }
-        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const { createClient } = await loadSupabaseJs();
         supabaseClient = createClient(config.supabaseUrl, config.supabasePublishableKey);
 
         const { data: { session } } = await supabaseClient.auth.getSession();

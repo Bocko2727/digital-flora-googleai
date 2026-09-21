@@ -22,8 +22,21 @@ const { Pool } = pg;
 // there is no stable public URL for it, it must come from the dashboard).
 // Until that env var is set, this falls back to the previous relaxed
 // verification so existing deployments keep working unmodified.
-const caCert = process.env.SUPABASE_DB_CA_CERT;
-const sslConfig = caCert ? { ca: caCert, rejectUnauthorized: true } : { rejectUnauthorized: false };
+//
+// fallow-ignore-next-line unused-export
+export function resolveSslConfig(caCert) {
+    if (!caCert) return { rejectUnauthorized: false };
+    // Some hosting-provider env UIs (and a hand-edited single-line .env)
+    // collapse a multi-line PEM into literal "\n" escape sequences instead
+    // of real newlines. node's TLS CA parser needs real newlines, so a
+    // literal backslash-n here would otherwise fail every connection once
+    // rejectUnauthorized flips to true. A cert with genuine newlines
+    // already (e.g. from `vercel env pull`) has no literal "\n" substring,
+    // so it passes through unchanged.
+    const normalizedCert = caCert.includes('\\n') ? caCert.replace(/\\n/g, '\n') : caCert;
+    return { ca: normalizedCert, rejectUnauthorized: true };
+}
+const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
 // fallow-ignore-next-line unused-export, complexity
 export const createSupabasePool = () => {
     if (!global._supabasePool && process.env.SUPABASE_DB_URL) {

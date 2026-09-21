@@ -7,8 +7,8 @@ node_modules/
 
 # Runtime images created by local upload flow
 images/uploads/
-# Local VS Code / Codespaces configuration
-.vscode/
 
-# Runtime images created by local upload flow
-images/uploads/
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+blob-report/

@@ -60,6 +60,22 @@ This is a migration target, not a directive to move existing files. Every move n
 - Whether JavaScript or TypeScript modules under `src/db/` are imported at runtime.
 - Whether `server.js` is deployed and which host invokes it.
 
+## Accepted risks
+
+- **`drizzle-kit` esbuild dev-server vulnerability (moderate, GHSA-67mh-4wv8-2f99).**
+  `drizzle-kit` (devDependency, `^0.31.10`) depends on the deprecated
+  `@esbuild-kit/esm-loader` package, which pulls a vulnerable `esbuild`
+  (dev server accepts requests from any website while running). Checked
+  2026-09-21: the latest available `drizzle-kit` release in this major line
+  (`0.31.11`) still depends on the same `@esbuild-kit/esm-loader` chain, so
+  there is no non-breaking fix today. `npm audit`'s only offered fix is a
+  downgrade to `drizzle-kit@0.18.1` (13 minor versions back,
+  `isSemVerMajor: true`), which risks breaking the schema/migration
+  tooling for a dev-only exposure (the vulnerable code only runs while a
+  developer has `drizzle-kit`'s local dev process open; it is never part of
+  the deployed server or client bundle). Decision: leave as-is, revisit when
+  `drizzle-kit` ships a release without `@esbuild-kit/esm-loader`.
+
 ## Safe migration sequence
 
 1. Establish automated validation while preserving the current file layout.

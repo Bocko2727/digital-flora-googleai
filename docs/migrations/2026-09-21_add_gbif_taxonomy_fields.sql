@@ -1,8 +1,11 @@
--- PROPOSAL ONLY — NOT APPLIED.
--- Per CLAUDE.md rule #7 (no Supabase schema change without explicit approval
--- of the exact SQL/diff), this file has not been run against any database.
--- It is staged here for review. Do not run it, or move it into
--- supabase/migrations/, without an explicit go-ahead for this exact SQL.
+-- APPLIED on 2026-09-21 to project digital-flora (sxuxtsbyqjaodyuqebux) as
+-- migration 20260921151658_add_gbif_taxonomy_fields, after explicit
+-- approval of this exact SQL (CLAUDE.md rule #7). See
+-- supabase/migrations/20260921151658_add_gbif_taxonomy_fields.sql for the
+-- applied-migration stub. Verified post-apply: 98/98 rows intact, 0 rows
+-- with gbif_taxonomy set, all 98 defaulted to taxonomy_status
+-- 'manual-unverified'. Kept here unmodified below for its design notes and
+-- rollback SQL — do not re-run it.
 --
 -- Target: public.plants (project digital-flora, sxuxtsbyqjaodyuqebux)
 -- Purpose: Phase 2.1/2.2 GBIF taxonomic backbone (digital-flora-priority-1

@@ -1,0 +1,11 @@
+-- Applied remotely on 2026-09-21 via mcp__Supabase__apply_migration.
+-- Source proposal: docs/migrations/2026-09-21_add_gbif_taxonomy_fields.sql
+-- (kept there with full design notes and rollback SQL; this stub exists
+-- only to align Supabase CLI migration history, matching the convention
+-- used by the other historical migrations in this folder).
+--
+-- Summary: adds public.plants.gbif_taxonomy (jsonb, nullable) and
+-- public.plants.taxonomy_status (text, default 'manual-unverified', checked
+-- against manual-unverified|source-suggested|editor-confirmed|needs-review).
+-- Additive only - no existing column, row, or RLS policy changed. Verified
+-- post-apply: 98/98 rows intact, all defaulted to 'manual-unverified'.

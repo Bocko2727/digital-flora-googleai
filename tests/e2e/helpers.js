@@ -8,6 +8,12 @@ export const plantsFixture = JSON.parse(
   readFileSync(path.join(__dirname, 'fixtures', 'plants.json'), 'utf8')
 );
 
+// 25 items - more than either #pageSizeSelect option (12/24) - for exercising
+// multi-page pagination state, which the default 3-item fixture can't.
+export const plantsPaginatedFixture = JSON.parse(
+  readFileSync(path.join(__dirname, 'fixtures', 'plants-paginated.json'), 'utf8')
+);
+
 // Intercepts all Supabase/backend calls the catalog page makes so tests never
 // touch the real Supabase project (data safety: CLAUDE.md §7 forbids writing
 // test data to production Supabase). GET /api/plants serves the fixture;

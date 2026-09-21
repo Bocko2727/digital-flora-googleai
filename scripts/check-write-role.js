@@ -8,20 +8,27 @@
 // anything, and a non-superuser app role would need to be provisioned
 // before RLS is meaningful there.
 //
+// Reuses createSupabasePool() from src/db/supabase.js — the exact pool
+// server.js's write path uses — instead of a hand-rolled one, so this
+// script can never drift from the connection it claims to be diagnosing.
+//
 // Run wherever SUPABASE_DB_URL is actually set (e.g. `vercel env pull
-// .env.local && node -r dotenv/config scripts/check-write-role.js
-// dotenv_config_path=.env.local`, or paste the value into a throwaway
-// local .env for this one run only). Prints only the role name and two
-// booleans — never the connection string itself, never any table data.
-import pg from 'pg';
+// .env.local && node --env-file=.env.local scripts/check-write-role.js`,
+// or paste the value into a throwaway local .env for this one run only).
+// Prints only the role name and two booleans — never the connection
+// string itself, never any table data.
+import { createSupabasePool } from '../src/db/supabase.js';
 
-const connectionString = process.env.SUPABASE_DB_URL;
-if (!connectionString) {
+if (!process.env.SUPABASE_DB_URL) {
     console.error('SUPABASE_DB_URL is not set in this environment. Nothing to check.');
     process.exit(1);
 }
 
-const pool = new pg.Pool({ connectionString, max: 1, connectionTimeoutMillis: 5000, ssl: { rejectUnauthorized: false } });
+const pool = createSupabasePool();
+if (!pool) {
+    console.error('Failed to initialize the Supabase pool (see the warning logged above).');
+    process.exit(1);
+}
 
 try {
     const { rows } = await pool.query(
@@ -35,6 +42,9 @@ try {
     } else {
         console.log('\n=> This role does NOT bypass RLS. RLS policies are actually enforced on this write path.');
     }
+} catch (err) {
+    console.error('Diagnostic query failed:', err.message);
+    process.exitCode = 1;
 } finally {
     await pool.end();
 }

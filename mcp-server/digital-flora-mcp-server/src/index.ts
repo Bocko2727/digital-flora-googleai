@@ -80,6 +80,13 @@ async function runHTTP(): Promise<void> {
     res.status(200).json({ status: "ok" });
   });
 
+  // Some hosting platforms (e.g. Railway) probe "/" by default when no
+  // health-check path is configured; without a handler that 404s and the
+  // deploy is reported failed even though the server is actually up.
+  app.get("/", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   app.use("/mcp", (req, res, next) => {
     const header = req.header("authorization") || "";
     const expected = `Bearer ${authToken}`;

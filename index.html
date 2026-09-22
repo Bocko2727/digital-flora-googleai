@@ -2009,6 +2009,9 @@
         const imgRes = await fetch(imgUrl);
         if (!imgRes.ok) throw new Error('Снимката не може да се зареди за проверка.');
         const blob = await imgRes.blob();
+        // The server's missing-image fallback is an SVG placeholder, which
+        // the AI endpoint does not accept; say so instead of a vague 404.
+        if (!/^image\/(jpeg|png|webp)$/.test(blob.type)) throw new Error('Няма реална снимка (JPEG/PNG/WebP) за проверка — записът показва заместващо изображение.');
         const dataUri = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onerror = () => reject(new Error('Неуспешно четене на снимката.'));

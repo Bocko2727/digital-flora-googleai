@@ -143,8 +143,9 @@ function forwardCatalogMutationError(res, next, error) {
   }
   return next(error);
 }
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '25mb', extended: true }));
+// Largest legitimate body is one 5 MB image as base64 (~6.7 MB) plus JSON.
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ limit: '8mb', extended: true }));
 
 
 const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
@@ -155,7 +156,7 @@ app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.
 app.use('/vendor', staticAssetLimiter, express.static(path.join(__dirname, 'vendor'), { dotfiles: 'deny', index: false }));
 
 
-app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
+app.use('/images', staticAssetLimiter, express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
 
 
 const uploadsDir = path.join(__dirname, 'images', 'uploads');

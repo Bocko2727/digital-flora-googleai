@@ -1382,7 +1382,7 @@
     // True when the record's botanical text comes from an AI analysis (single
     // upload "AI x%" or the AI-generated botanical archive) rather than from an
     // editor. Such text is labelled as unverified (CLAUDE.md §4.13/§4.14).
-    const isAiSourced = (confidence) => /\bAI\b|архив/i.test(String(confidence || ''));
+    const isAiSourced = (confidence) => /\bAI\b|архив|Vision/i.test(String(confidence || ''));
     const AI_TEXT_MARK = '<span class="ai-text-mark" title="Текстът е генериран от AI и не е проверен от ботаник.">AI текст — непроверен</span>';
 
     // Badge helper

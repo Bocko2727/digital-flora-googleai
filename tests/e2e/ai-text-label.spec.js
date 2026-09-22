@@ -8,6 +8,7 @@ const base = plantsFixture[0];
 const plants = [
   { ...base, id: 'ai-upload', commonName: 'AI качване', confidence: 'Вероятно (AI 92%)' },
   { ...base, id: 'ai-archive', commonName: 'AI архив', confidence: 'Вероятно (Ботанически архив, AI)' },
+  { ...base, id: 'ai-vision', commonName: 'Vision запис', confidence: 'Вероятно (Vision анализ)' },
   { ...base, id: 'editor-confirmed', commonName: 'Потвърден запис', confidence: 'Потвърдено' },
 ];
 
@@ -22,7 +23,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.plant-card')).toHaveCount(plants.length);
 });
 
-for (const name of ['AI качване', 'AI архив']) {
+for (const name of ['AI качване', 'AI архив', 'Vision запис']) {
   test(`AI text label: shown on every botanical section for "${name}"`, async ({ page }) => {
     await openByName(page, name);
     const marks = page.locator('#view .ai-text-mark');

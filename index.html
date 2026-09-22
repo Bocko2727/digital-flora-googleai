@@ -1697,7 +1697,7 @@
 
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ image: base64String })
       });
       if (!res.ok) {

@@ -10,7 +10,7 @@ import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
-import { storePlantImage } from './src/storage/supabase-images.js';
+import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 
@@ -238,7 +238,9 @@ app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, require
 });
 
 
-app.post('/api/qa', aiLimiter, async (req, res) => {
+// AI endpoints call a paid/credit-consuming provider (CLAUDE.md §4.12), so
+// they are restricted to catalog editors/admins, same as catalog writes.
+app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;
   if (!filename) return res.status(400).json({ error: 'Липсва файл' });
   let base64 = null;
@@ -246,7 +248,9 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
   const localPath = resolveSafeImagePath(filename);
   if (localPath) base64 = fs.readFileSync(localPath).toString('base64');
   if (!base64) { const remote = await fetchAllowedGithubImage(filename); if (remote) { base64 = remote.buffer.toString('base64'); mimeType = remote.contentType || mimeType; } }
-  if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) { const match = filename.match(/^data:(image\/\w+);base64,(.*)$/); if (match) { mimeType = match[1]; base64 = match[2]; } }
+  if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) {
+    try { const parsed = parsePlantImageDataUri(filename); mimeType = parsed.mimeType; base64 = parsed.buffer.toString('base64'); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
+  }
   if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
   const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${claimedName}" (${latinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
   try {
@@ -262,20 +266,22 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
 });
 
 
-app.post('/api/upload', aiLimiter, async (req, res) => {
+app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'Няма качена снимка.' });
+  let parsed;
+  // Same validation as Storage uploads: JPEG/PNG/WebP only, magic bytes
+  // must match, max 5 MB. The on-disk extension comes from the validated
+  // MIME type, never from the client, so no .html/.svg can be written into
+  // the publicly served images/ directory.
+  try { parsed = parsePlantImageDataUri(image); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
   try {
-    const match = image.match(/^data:(image\/(\w+));base64,(.*)$/);
-    if (!match) return res.status(400).json({ error: 'Невалиден файлов формат.' });
-    const mimeType = match[1];
-    let ext = match[2] || 'jpg';
-    if (ext === 'jpeg') ext = 'jpg';
-    const base64Image = match[3];
-    const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const { buffer, mimeType, extension } = parsed;
+    const base64Image = buffer.toString('base64');
+    const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
     const filePath = path.join(uploadsDir, fileName);
     let relativeUrl = '';
-    try { fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64')); relativeUrl = `images/uploads/${fileName}`; } catch (e) { console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message); relativeUrl = ''; }
+    try { fs.writeFileSync(filePath, buffer); relativeUrl = `images/uploads/${fileName}`; } catch (e) { console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message); relativeUrl = ''; }
     const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{\n  "likely_scientific_name": "Latin name",\n  "likely_common_name_bg": "Bulgarian name",\n  "family": "Botanical family in Latin or Bulgarian",\n  "confidence": 0.9,\n  "identification_level": "species",\n  "visible_features": "Description in Bulgarian",\n  "possible_lookalikes": "Similar plants",\n  "safety_note": "Toxicity or warnings in Bulgarian",\n  "additional_photos_needed": "What else to photograph for better ID"\n}`;
     let aiData;
     try {
@@ -285,22 +291,25 @@ app.post('/api/upload', aiLimiter, async (req, res) => {
       if (kiloApiKey) { console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message); const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType); const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim(); aiData = JSON.parse(cleanedText); } else { throw geminiErr; }
     }
     aiData.analyzed_at = new Date().toISOString();
-    res.json({ success: true, record: aiData, imageUrl: relativeUrl, base64: image });
+    res.json({ success: true, record: aiData, imageUrl: relativeUrl });
   } catch (error) { console.error('Upload Error:', error); res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' }); }
 });
 
 
-app.post('/api/users/sync', moderateLimiter, async (req, res) => {
+// Legacy Cloud SQL endpoints: authenticated only. A caller may sync only
+// their own verified identity; Drive import logging needs write access.
+app.post('/api/users/sync', moderateLimiter, authenticateCatalogActor, async (req, res) => {
   try {
     const { uid, email, displayName, photoUrl } = req.body;
     if (!uid || !email) return res.status(400).json({ error: 'Липсва uid или email' });
+    if (uid !== req.catalogActor.id || email !== req.catalogActor.email) return res.status(403).json({ error: 'Може да синхронизирате само собствения си профил.', code: 'USER_SYNC_FORBIDDEN' });
     const user = await getOrCreateUser(uid, email, displayName, photoUrl);
     res.json({ success: true, user });
   } catch (err) { console.error('User sync error:', err); res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' }); }
 });
 
 
-app.post('/api/drive/log', moderateLimiter, async (req, res) => {
+app.post('/api/drive/log', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   try {
     const { fileId, fileName, mimeType, userUid } = req.body;
     if (!fileId || !fileName) return res.status(400).json({ error: 'Липсва fileId или fileName' });

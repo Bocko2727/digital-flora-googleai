@@ -33,3 +33,18 @@ export async function deleteSupabasePlant(id) {
     const { rows } = await pool().query('delete from public.plants where id = $1 returning id', [id]);
     return rows[0] || null;
 }
+export async function supabasePlantExists(id) {
+    assertUuid(id);
+    const { rows } = await pool().query('select 1 from public.plants where id = $1 limit 1', [id]);
+    return rows.length > 0;
+}
+
+// Appends one photo URL atomically in SQL (no read-modify-write), so two
+// concurrent uploads to the same plant cannot overwrite each other. A legacy
+// 'placeholder.jpg' entry is dropped, as the previous JS-side merge did.
+export async function appendSupabasePlantPhoto(id, photoUrl) {
+    assertUuid(id);
+    const photo = JSON.stringify(normalizedPhotos([photoUrl]));
+    const { rows } = await pool().query(`update public.plants set photos = coalesce((select jsonb_agg(e) from jsonb_array_elements(coalesce(photos, '[]'::jsonb)) as e where e <> '"placeholder.jpg"'::jsonb), '[]'::jsonb) || $1::jsonb, updated_at = now() where id = $2 returning id, photos`, [photo, id]);
+    return rows[0] || null;
+}

@@ -9,7 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
 import { seedPlantsIfEmpty, getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
-import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
+import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
@@ -351,15 +351,27 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
     if (!image) return res.status(400).json({ error: 'No image provided.', code: 'IMAGE_REQUIRED' });
 
 
-    const existingPlants = await getSupabasePlants();
-    const targetPlant = existingPlants.find((plant) => plant.id === req.params.id);
-    if (!targetPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    let exists;
+    try { exists = await supabasePlantExists(req.params.id); } catch (dbError) {
+      if (/Invalid plant id/.test(dbError.message)) throw dbError;
+      console.error('Photo upload: plant lookup failed:', dbError.message);
+      return res.status(502).json({ error: 'Catalog database is temporarily unavailable.', code: 'DATABASE_UNAVAILABLE' });
+    }
+    if (!exists) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
 
 
     const stored = await storePlantImage(req.params.id, image);
-    const currentPhotos = (Array.isArray(targetPlant.photos) ? targetPlant.photos : []).filter((p) => p && p !== 'placeholder.jpg');
-    const updatedPlant = await updateSupabasePlant(req.params.id, { photos: [...currentPhotos, stored.imageUrl] });
-    if (!updatedPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    let updatedPlant;
+    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl); } catch (dbError) {
+      // The Storage object already exists; it is NOT deleted here (storage
+      // deletes need explicit approval). Log the key so it can be traced.
+      console.error(`Photo upload: stored ${stored.objectKey} but could not attach it to plant ${req.params.id}:`, dbError.message);
+      return res.status(502).json({ error: 'Image was stored but could not be attached to the plant.', code: 'PHOTO_ATTACH_FAILED' });
+    }
+    if (!updatedPlant) {
+      console.error(`Photo upload: stored ${stored.objectKey} but plant ${req.params.id} disappeared before attach.`);
+      return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    }
 
 
     return res.status(201).json({ success: true, imageUrl: stored.imageUrl, objectKey: stored.objectKey, plant: updatedPlant });

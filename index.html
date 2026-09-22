@@ -1738,6 +1738,9 @@
       const createdPayload = await createRes.json().catch(() => ({}));
       const newPlantId = createdPayload && createdPayload.plant ? createdPayload.plant.id : null;
 
+      // Returned to uploadPlant so a record created without its photo is
+      // reported to the user, not only logged to the console.
+      let photoFailed = !newPlantId;
       if (newPlantId) {
         try {
           const photoRes = await fetch(`/api/plants/${encodeURIComponent(newPlantId)}/photos`, {
@@ -1748,11 +1751,14 @@
           if (!photoRes.ok) {
             const photoPayload = await photoRes.json().catch(() => ({}));
             console.warn(`Снимка "${file.name}": качването в Storage е неуспешно:`, photoPayload.error || photoRes.status);
+            photoFailed = true;
           }
         } catch (photoErr) {
           console.warn(`Снимка "${file.name}": качването в Storage е неуспешно:`, photoErr.message);
+          photoFailed = true;
         }
       }
+      return { photoFailed };
     }
 
     // Upload Plant Feature (Task 0.1 single file + Task 0.2 bulk upload).
@@ -1768,6 +1774,7 @@
       const total = files.length;
       let succeeded = 0;
       const failedFiles = [];
+      const noPhotoFiles = [];
 
       for (let index = 0; index < total; index++) {
         const file = files[index];
@@ -1776,8 +1783,9 @@
           status.innerText = `⏳ Обработва се ${index + 1} от ${total}: "${file.name}"...`;
         }
         try {
-          await processOnePlantUpload(file);
+          const outcome = await processOnePlantUpload(file);
           succeeded += 1;
+          if (outcome && outcome.photoFailed) noPhotoFiles.push(file.name);
         } catch (err) {
           failedFiles.push(file.name);
           console.error(`Грешка при обработка на "${file.name}":`, err);
@@ -1785,14 +1793,18 @@
       }
 
       if (status) {
-        if (!failedFiles.length) {
+        if (!failedFiles.length && !noPhotoFiles.length) {
           status.innerText = total === 1
             ? '✅ Растението е добавено успешно.'
             : `✅ Обработени успешно ${succeeded} от ${total} снимки.`;
         } else {
-          status.innerText = `⚠️ Обработени ${succeeded} от ${total}. Неуспешни: ${failedFiles.join(', ')}.`;
+          const parts = [`⚠️ Обработени ${succeeded} от ${total}.`];
+          if (failedFiles.length) parts.push(`Неуспешни: ${failedFiles.join(', ')}.`);
+          if (noPhotoFiles.length) parts.push(`Добавени без снимка (качването в Storage се провали): ${noPhotoFiles.join(', ')}.`);
+          status.innerText = parts.join(' ');
         }
-        setTimeout(() => { status.style.display = 'none'; }, 6000);
+        // Warnings stay visible; only a clean success auto-hides.
+        if (!failedFiles.length && !noPhotoFiles.length) setTimeout(() => { status.style.display = 'none'; }, 6000);
       }
 
       if (event && event.target) event.target.value = '';

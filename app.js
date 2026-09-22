@@ -2,6 +2,92 @@
 // Extracted verbatim (original indentation kept) from the former inline
 // module block so the CSP script-src does not need 'unsafe-inline'.
 // Module scope and execution order are unchanged.
+
+// --- CSP: delegated event handling (no inline on*="" attributes) ---
+// Elements declare what they do via data-action (click),
+// data-change-action (change) and data-input-action (input); arguments live
+// in data-* attributes. One listener per event type on document dispatches
+// to the same window.* functions the former inline handlers called.
+// Handlers receive an event-like object whose currentTarget is the element
+// carrying the data-*-action attribute (as it was for inline handlers), so
+// savePlant/submitCreatePlant keep finding their own button.
+const delegatedEvent = (e, el) => ({
+  type: e.type,
+  target: e.target,
+  currentTarget: el,
+  preventDefault: () => e.preventDefault(),
+  stopPropagation: () => e.stopPropagation(),
+  nativeEvent: e,
+});
+
+const CLICK_ACTIONS = {
+  'trigger-upload': () => window.triggerUpload(),
+  'open-create-plant': () => window.openCreatePlantForm(),
+  'set-grid-view': (ev, el) => window.setGridView(el.dataset.view),
+  'open-google-picker': () => window.openGooglePicker(),
+  'toggle-theme': () => window.toggleTheme(),
+  'toggle-auth-panel': () => window.toggleAuthPanel(),
+  'scroll-top': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+  'page-prev': () => window.goToPage(window.currentPage - 1),
+  'page-next': () => window.goToPage(window.currentPage + 1),
+  'go-to-page': (ev, el) => window.goToPage(Number(el.dataset.page)),
+  'jump-to-letter': (ev, el) => window.jumpToLetter(el.dataset.letter),
+  'reload': () => location.reload(),
+  'modal-overlay': (ev) => window.handleModalOverlayClick(ev),
+  'close-modal': () => window.closeModal(),
+  'auth-overlay': (ev) => window.handleAuthOverlayClick(ev),
+  'close-auth-panel': () => window.closeAuthPanel(),
+  'sign-in': (ev) => window.signInUser(ev),
+  'logout': () => window.logoutUser(),
+  'create-plant-overlay': (ev) => window.handleCreatePlantOverlayClick(ev),
+  'close-create-plant': () => window.closeCreatePlantForm(),
+  'submit-create-plant': (ev) => window.submitCreatePlant(ev),
+  'open-plant': (ev, el) => window.openPlant(Number(el.dataset.idx)),
+  'change-photo': (ev, el) => window.change(Number(el.dataset.delta)),
+  'edit-plant': () => window.editPlant(),
+  'delete-plant': (ev, el) => window.deletePlant(el.dataset.plantId),
+  'run-qa': () => window.runQA(),
+  'draw-modal': () => window.drawModal(),
+  'save-plant': (ev, el) => window.savePlant(el.dataset.plantId, ev),
+};
+const CHANGE_ACTIONS = {
+  'upload-plant': (ev) => window.uploadPlant(ev),
+  'filter': () => window.onFilterChange(),
+  'page-size': (ev, el) => window.setPageSize(el.value),
+  'upload-plant-photos': (ev, el) => window.uploadPlantPhotos(el.dataset.plantId, ev),
+};
+const INPUT_ACTIONS = {
+  'filter': () => window.onFilterChange(),
+};
+
+// Mirrors inline-handler bubbling: every ancestor with an action attribute
+// fires, innermost first. The chain is collected before any handler runs so
+// a handler that re-renders the DOM cannot cut it short.
+function dispatchDelegated(e, attr, actions) {
+  const chain = [];
+  for (let el = e.target instanceof Element ? e.target.closest(`[${attr}]`) : null; el; el = el.parentElement && el.parentElement.closest(`[${attr}]`)) {
+    chain.push(el);
+  }
+  for (const el of chain) {
+    if (e.cancelBubble) break;
+    const handler = actions[el.getAttribute(attr)];
+    if (!handler) continue;
+    // Like separate inline handlers: one throwing does not stop the others.
+    try { handler(delegatedEvent(e, el), el); } catch (err) { (window.reportError || console.error)(err); }
+  }
+}
+document.addEventListener('click', (e) => dispatchDelegated(e, 'data-action', CLICK_ACTIONS));
+document.addEventListener('change', (e) => dispatchDelegated(e, 'data-change-action', CHANGE_ACTIONS));
+document.addEventListener('input', (e) => dispatchDelegated(e, 'data-input-action', INPUT_ACTIONS));
+
+// Broken-image fallback (replaces inline onerror="this.src='/icon.svg'").
+// 'error' does not bubble, so listen in the capture phase. The equality
+// guard stops an endless loop if the fallback image itself fails.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.dataset.fallback) return;
+  if (img.getAttribute('src') !== img.dataset.fallback) img.src = img.dataset.fallback;
+}, true);
     let cachedAccessToken = null;
     const setCachedAccessToken = (token) => { cachedAccessToken = token; };
     const getCachedAccessToken = () => cachedAccessToken;
@@ -69,11 +155,11 @@
         container.innerHTML = `
       <div class="user-profile">
         <span class="user-name">${emailLabel} (${roleLabel})</span>
-        <button class="logout-mini" onclick="logoutUser()">Изход</button>
+        <button class="logout-mini" data-action="logout">Изход</button>
       </div>
     `;
       } else {
-        container.innerHTML = '<button class="auth-btn" id="authToggleBtn" onclick="toggleAuthPanel()">🔐 Вход</button>';
+        container.innerHTML = '<button class="auth-btn" id="authToggleBtn" data-action="toggle-auth-panel">🔐 Вход</button>';
       }
       setWriteUiVisible(roleCanWrite(window.currentProfileRole));
     }
@@ -351,7 +437,7 @@
       const wrap = document.getElementById('azJump');
       if (!wrap) return;
       wrap.innerHTML = AZ_LETTERS.map((letter) =>
-        `<button onclick="jumpToLetter('${letter}')" title="Скочи до '${letter}'">${letter}</button>`
+        `<button data-action="jump-to-letter" data-letter="${letter}" title="Скочи до '${letter}'">${letter}</button>`
       ).join('');
     }
     window.jumpToLetter = function (letter) {
@@ -454,7 +540,7 @@
             grid.innerHTML = `
           <div style="text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)">
             <p>Възникна временна пауза при свързване със сървъра.</p>
-            <button onclick="location.reload()" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
+            <button data-action="reload" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
           </div>
         `;
           }
@@ -520,7 +606,7 @@
       for (let i = startP; i <= endP; i++) pages.push(i);
 
       numbersEl.innerHTML = pages.map((p) =>
-        `<button class="page-num${p === cur ? ' active' : ''}" onclick="goToPage(${p})">${p}</button>`
+        `<button class="page-num${p === cur ? ' active' : ''}" data-action="go-to-page" data-page="${p}">${p}</button>`
       ).join('');
     }
 
@@ -559,8 +645,8 @@
         const imgPath = resolvePhotoUrl(p.photos[0] || '');
 
         return `
-      <div class="plant-card" onclick="openPlant(${globalIdx})">
-        <img class="plant-card-img" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" loading="lazy" onerror="this.src='/icon.svg'">
+      <div class="plant-card" data-action="open-plant" data-idx="${globalIdx}">
+        <img class="plant-card-img" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" loading="lazy" data-fallback="/icon.svg">
         <div class="plant-card-content">
           <h3 class="plant-card-title">${escapeHtml(p.commonName)}</h3>
           <div class="plant-card-latin">${escapeHtml(p.latinName)}</div>
@@ -777,13 +863,13 @@
     <article class="layout">
       <div class="photo-column">
         <div class="photo-wrap">
-          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" onerror="this.src='/icon.svg'">
+          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" data-fallback="/icon.svg">
         </div>
         ${multi ? `
           <div class="gallery">
-            <button onclick="change(-1)">← Предишна</button>
+            <button data-action="change-photo" data-delta="-1">← Предишна</button>
             <span>${photo + 1} от ${a.length}</span>
-            <button onclick="change(1)">Следваща →</button>
+            <button data-action="change-photo" data-delta="1">Следваща →</button>
           </div>
         ` : ''}
       </div>
@@ -791,8 +877,8 @@
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
           <h2>${escapeHtml(p.commonName)}</h2>
           <div style="display:flex; gap:8px;">
-            <button onclick="editPlant()" style="background:var(--hover-bg); color:var(--ink); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
-            <button onclick="deletePlant('${p.id}')" style="background:var(--badge-unc-bg); color:var(--red); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
+            <button data-action="edit-plant" style="background:var(--hover-bg); color:var(--ink); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
+            <button data-action="delete-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--badge-unc-bg); color:var(--red); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
           </div>
         </div>
         <div class="latin">${escapeHtml(p.latinName)}</div>
@@ -828,7 +914,7 @@
         <div class="qa-box">
           <h3 style="margin:0 0 4px 0; color:var(--blue); font-size:15px;">🔍 Интерактивен QA Контрол</h3>
           <p style="font-size:13px; margin:0 0 10px 0; color:var(--muted);">Попитай AI ботаника дали снимката отговаря на името.</p>
-          <button onclick="runQA()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px;">Извърши AI верификация</button>
+          <button data-action="run-qa" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px;">Извърши AI верификация</button>
           <div id="qa-result" style="margin-top:10px; font-weight:600; font-size:14px; white-space:pre-wrap;"></div>
         </div>
       </div>
@@ -849,13 +935,13 @@
     <article class="layout">
       <div class="photo-column">
         <div class="photo-wrap">
-          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" onerror="this.src='/icon.svg'">
+          <img class="photo" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" data-fallback="/icon.svg">
         </div>
       </div>
       <div class="info">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
           <h2 style="margin:0;">Редакция на образец</h2>
-          <button onclick="drawModal()" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Отказ</button>
+          <button data-action="draw-modal" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Отказ</button>
         </div>
 
         <div class="form-group">
@@ -905,11 +991,11 @@
 
         <div class="form-group">
           <label>Снимки (${(p.photos || []).length} качени)</label>
-          <input type="file" id="e_photo_input" accept="image/jpeg,image/png,image/webp" multiple onchange="uploadPlantPhotos('${p.id}', event)">
+          <input type="file" id="e_photo_input" accept="image/jpeg,image/png,image/webp" multiple data-change-action="upload-plant-photos" data-plant-id="${escapeHtml(p.id)}">
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button onclick="savePlant('${p.id}', event)" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
       </div>
     </article>
   `;

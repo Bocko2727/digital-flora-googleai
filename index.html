@@ -920,43 +920,43 @@
     </div>
     <div class="header-actions">
       <div id="writeActions" style="display:none; gap:10px; flex-wrap:wrap;">
-        <button class="action-btn upload-btn" onclick="triggerUpload()">🌿 + От компютър (AI анализ)</button>
-        <button class="action-btn upload-btn" onclick="openCreatePlantForm()">➕ Ново растение (ръчно)</button>
+        <button class="action-btn upload-btn" data-action="trigger-upload">🌿 + От компютър (AI анализ)</button>
+        <button class="action-btn upload-btn" data-action="open-create-plant">➕ Ново растение (ръчно)</button>
       </div>
       <div class="view-toggle" id="viewToggle">
-        <button data-view="large" onclick="setGridView('large')" title="Голям изглед">🔲 Голям</button>
-        <button data-view="compact" onclick="setGridView('compact')" title="Компактен изглед">▦ Компактен</button>
-        <button data-view="list" onclick="setGridView('list')" title="Списък">☰ Списък</button>
+        <button data-view="large" data-action="set-grid-view" title="Голям изглед">🔲 Голям</button>
+        <button data-view="compact" data-action="set-grid-view" title="Компактен изглед">▦ Компактен</button>
+        <button data-view="list" data-action="set-grid-view" title="Списък">☰ Списък</button>
       </div>
-      <button class="action-btn drive-btn" onclick="openGooglePicker()">📁 Google Drive (Picker)</button>
-      <button class="action-btn theme-toggle-btn" onclick="toggleTheme()" title="Смяна на темата">🌓 Тема</button>
+      <button class="action-btn drive-btn" data-action="open-google-picker">📁 Google Drive (Picker)</button>
+      <button class="action-btn theme-toggle-btn" data-action="toggle-theme" title="Смяна на темата">🌓 Тема</button>
       <div id="authContainer" role="status" aria-live="polite">
-        <button class="auth-btn" id="authToggleBtn" onclick="toggleAuthPanel()">🔐 Вход</button>
+        <button class="auth-btn" id="authToggleBtn" data-action="toggle-auth-panel">🔐 Вход</button>
       </div>
     </div>
   </header>
 
-  <input type="file" id="uploadInput" accept="image/*" multiple style="display:none" onchange="uploadPlant(event)">
+  <input type="file" id="uploadInput" accept="image/*" multiple style="display:none" data-change-action="upload-plant">
   <div id="uploadStatus">⏳ AI ботаникът анализира и съхранява снимката...</div>
-  <button id="backToTopBtn" onclick="window.scrollTo({top:0, behavior:'smooth'})" title="Нагоре">▲</button>
+  <button id="backToTopBtn" data-action="scroll-top" title="Нагоре">▲</button>
 
   <div class="controls">
     <input type="text" id="searchInput" placeholder="🔍 Търси по българско или латинско име..."
-      oninput="onFilterChange()">
-    <select id="familyFilter" onchange="onFilterChange()">
+      data-input-action="filter">
+    <select id="familyFilter" data-change-action="filter">
       <option value="">Всички семейства</option>
     </select>
-    <select id="confidenceFilter" onchange="onFilterChange()">
+    <select id="confidenceFilter" data-change-action="filter">
       <option value="">Всички статуси</option>
       <option value="Потвърдено">Потвърдено</option>
       <option value="Вероятно">Вероятно</option>
       <option value="Неопределимо">Неопределимо</option>
     </select>
-    <select id="sortFilter" onchange="onFilterChange()">
+    <select id="sortFilter" data-change-action="filter">
       <option value="newest">Най-нови първо</option>
       <option value="az">Азбучен ред (А-Я)</option>
     </select>
-    <select id="pageSizeSelect" onchange="setPageSize(this.value)">
+    <select id="pageSizeSelect" data-change-action="page-size">
       <option value="12">12 на страница</option>
       <option value="24">24 на страница</option>
       <option value="48">48 на страница</option>
@@ -974,22 +974,22 @@
         данни...</div>
     </div>
     <div class="pagination-wrap" id="paginationWrap">
-      <button class="page-btn" id="prevPageBtn" onclick="goToPage(window.currentPage - 1)">← Предишна</button>
+      <button class="page-btn" id="prevPageBtn" data-action="page-prev">← Предишна</button>
       <div class="page-numbers" id="pageNumbers"></div>
-      <button class="page-btn" id="nextPageBtn" onclick="goToPage(window.currentPage + 1)">Следваща →</button>
+      <button class="page-btn" id="nextPageBtn" data-action="page-next">Следваща →</button>
     </div>
   </main>
 
-  <div id="modal" class="modal-overlay" onclick="handleModalOverlayClick(event)">
+  <div id="modal" class="modal-overlay" data-action="modal-overlay">
     <div class="modal-content">
-      <button class="close-btn" onclick="closeModal()" title="Затвори (Esc)">×</button>
+      <button class="close-btn" data-action="close-modal" title="Затвори (Esc)">×</button>
       <div id="view"></div>
     </div>
   </div>
 
-  <div id="authPanel" class="modal-overlay" onclick="handleAuthOverlayClick(event)">
+  <div id="authPanel" class="modal-overlay" data-action="auth-overlay">
     <div class="modal-content" style="max-width:380px; height:auto; max-height:none;">
-      <button class="close-btn" onclick="closeAuthPanel()" title="Затвори">×</button>
+      <button class="close-btn" data-action="close-auth-panel" title="Затвори">×</button>
       <div style="padding:34px 30px;">
         <h2 style="margin:0 0 6px;">Вход за редактори</h2>
         <p style="color:var(--muted); font-size:13px; margin:0 0 20px;">Само оторизирани редактори/администратори могат
@@ -1003,15 +1003,15 @@
           <input type="password" id="auth_password" autocomplete="current-password">
         </div>
         <div id="authError" style="color:var(--red); font-size:13px; margin-bottom:10px; display:none;"></div>
-        <button onclick="signInUser(event)"
+        <button data-action="sign-in"
           style="background:var(--green); color:#fff; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold;">Вход</button>
       </div>
     </div>
   </div>
 
-  <div id="createPlantPanel" class="modal-overlay" onclick="handleCreatePlantOverlayClick(event)">
+  <div id="createPlantPanel" class="modal-overlay" data-action="create-plant-overlay">
     <div class="modal-content" style="max-width:640px; height:auto; max-height:90vh; overflow-y:auto;">
-      <button class="close-btn" onclick="closeCreatePlantForm()" title="Затвори">×</button>
+      <button class="close-btn" data-action="close-create-plant" title="Затвори">×</button>
       <div style="padding:34px 30px;">
         <h2 style="margin:0 0 16px;">Ново растение (ръчно въвеждане)</h2>
         <div class="form-group">
@@ -1056,7 +1056,7 @@
         </div>
         <div id="createPlantError" style="color:var(--red); font-size:13px; margin-bottom:10px; display:none;"></div>
         <p style="color:var(--muted); font-size:12px;">Снимки се добавят отделно към записа след създаването му.</p>
-        <button onclick="submitCreatePlant(event)"
+        <button data-action="submit-create-plant"
           style="background:var(--green); color:#fff; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px;">💾
           Създай запис</button>
       </div>

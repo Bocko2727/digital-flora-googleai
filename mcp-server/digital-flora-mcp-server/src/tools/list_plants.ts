@@ -75,7 +75,7 @@ Error Handling:
         .range(params.offset, params.offset + params.limit - 1);
 
       if (params.search) {
-        const term = params.search.replace(/[%_]/g, "\\$&");
+        const term = params.search.replace(/[\\%_]/g, "\\$&");
         query = query.or(`common_name.ilike.%${term}%,latin_name.ilike.%${term}%`);
       }
       if (params.family) query = query.eq("family", params.family);

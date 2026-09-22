@@ -60,3 +60,50 @@ Recommendation: since all catalog photos resolve to Supabase Storage in the UI, 
 - The server refuses to serve `/` from any path containing a dot-directory (`sendFile … dotfiles:'deny'`), so e2e can't run from `.claude/worktrees/…`. Harmless in production.
 - The service worker reloaded the page on first visit → fixed in **PR #14**.
 - `api.gbif.org` is blocked by this sandbox's egress policy, so the GBIF spec (T10) was not live-checked.
+
+## Results table (end of session)
+| Task | Status | Link |
+|---|---|---|
+| T1 pre-deploy check | done (report above) | #19 |
+| T2 deploy | **prepared, waiting for owner** | commands above |
+| T3 Vercel quota | done: nothing deleted yet | above |
+| T4 e2e for PR #12 behaviour | done, 8 tests | #15 |
+| T5 mobile overflow flake | root cause = SW first-load reload (no real overflow) → fixed in #14; extra race fixed | #14, #20 |
+| T6 AI-text label + claims review list | done | #13 |
+| T7 identification status | done, no migration (existing `taxonomy_status`); backfill waiting | #17 |
+| T8 orphan photos | trace done, no action | above |
+| T9 image pipeline | spec | #19 |
+| T10 GBIF autocomplete | spec (live check blocked by sandbox egress) | #19 |
+| T11 CSP without 'unsafe-inline' | done, 42/42 handlers | #21 |
+| T12 lint + validator test | done | #16 |
+| T13 server pagination | spec | #19 |
+| T14 image fallback repo | recommendation | above |
+| T15 recommendations | (a) done in #18; (b)(c) waiting; (d) after UI merges | #18 |
+
+## Waiting for owner approval
+1. **Merge** (yours). Recommended order:
+   - #14 (SW reload fix; stabilises e2e) → #20 → #16 → #15 → #13 → #17 → #18 → #19;
+   - then #21 (CSP) last. I will first merge `main` into #21 and move the #13/#17 changes into `app.js`.
+2. **Deploy** to production: commands in T2, after the merges.
+3. **Supabase data**:
+   - backfill `taxonomy_status` → `needs-review` (98 rows, SQL in #17);
+   - rewrite the group-A AI safety/edibility texts (list in #13);
+   - IMG_5512 → needs-review record (T8, option 1).
+4. **Settings (production)**:
+   - Vercel: re-save `SUPABASE_SERVICE_ROLE_KEY` and `MCP_SERVER_TOKEN` as Sensitive;
+   - add `SUPABASE_DB_CA_CERT`;
+   - Supabase Auth: password minimum length and character classes.
+5. **Paid** (yours to decide): a Gemini key on Vercel, needed for AI analysis when uploading a new plant; Leaked Password Protection (Pro plan).
+6. **Legacy deletion**: the Cloud SQL code (T15b), and removing or redirecting the GitHub image fallback (T14).
+7. **Manual**: delete the 8 old Vercel deployments.
+
+## Guarantees for this session
+- No merge.
+- No production deploy.
+- No schema, RLS, Auth or Storage change.
+- No INSERT/UPDATE/DELETE on production data; only read-only SELECTs.
+- No original image touched or deleted.
+- No force-push or history rewrite.
+- No secrets displayed or committed; env vars were read by name only.
+- No paid AI/API calls.
+- No AI text presented as verified botanical fact.

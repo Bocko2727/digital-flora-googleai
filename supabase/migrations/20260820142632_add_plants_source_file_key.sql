@@ -1,0 +1,3 @@
+-- Historical migration already applied remotely on 2026-08-20.
+-- Source schema migration: add_plants_source_file_key.
+-- Kept locally only to align Supabase CLI migration history.

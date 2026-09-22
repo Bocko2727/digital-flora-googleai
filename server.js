@@ -130,7 +130,7 @@ const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standa
 const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 function isCatalogInputError(error) {
-  return /Invalid plant id|required|photos must|No supported/.test(error.message);
+  return /Invalid plant id|Invalid taxonomy status|required|photos must|No supported/.test(error.message);
 }
 
 

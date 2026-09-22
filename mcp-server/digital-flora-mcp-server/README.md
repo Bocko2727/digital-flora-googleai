@@ -40,7 +40,12 @@ All tools support `response_format: "markdown" | "json"` and return actionable e
 npm install
 cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 npm run build
+npm start
 ```
+
+Requires Node 20.6+ (for `--env-file`, which `npm start`/`npm run dev` use automatically to load
+`.env` — plain `node dist/index.js` does *not* read `.env` on its own, so if you ever run the
+built file directly, add the flag: `node --env-file=.env dist/index.js`).
 
 Find the two Supabase values in your project dashboard: **Settings → API** →
 Project URL and the `service_role` secret key. The service role key bypasses Row Level
@@ -56,18 +61,23 @@ Since your work machine can't install software, do the "local" dev/test loop in 
 1. Push this folder into the Digital Flora repo (or its own repo), open a Codespace on it.
    Codespaces images ship Node already — `node -v` should just work.
 2. In the Codespace terminal:
-   ```bash
+```bash
    npm install
    cp .env.example .env
-   ```
+```
 3. Fill `.env` with `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — or better, don't put secrets
    in a file at all: add them as **Codespaces secrets** (GitHub repo/org → Settings →
    Codespaces → "Repository secrets" or your personal Codespaces secrets), scoped to this repo.
    They then appear as env vars automatically, `.env` stays empty/untracked.
 4. `npm run build`, then test every tool by hand before wiring anything to Claude:
-   ```bash
-   npx @modelcontextprotocol/inspector node dist/index.js
-   ```
+```bash
+   npx @modelcontextprotocol/inspector node --env-file=.env dist/index.js
+```
+   (the `--env-file=.env` flag is what makes the server actually read your `.env` file — plain
+   `node dist/index.js` won't pick it up. If you set the two Supabase values as **Codespaces
+   secrets** instead of a `.env` file, they're already real env vars and you can drop the flag:
+   `npx @modelcontextprotocol/inspector node dist/index.js`.)
+
    Codespaces will offer to forward the Inspector's port to your browser — click through it.
    This gives you a UI to call `flora_list_plants`, `flora_add_plant`, etc. directly.
 
@@ -135,17 +145,16 @@ directly.
 
 ## Project structure
 
-```
 src/
-├── index.ts          # server entry point (stdio + HTTP transports)
-├── types.ts           # shared TypeScript types
-├── constants.ts        # shared constants (page sizes, enums)
-├── schemas/common.ts    # shared Zod schema fragments
+├── index.ts # server entry point (stdio + HTTP transports)
+├── types.ts # shared TypeScript types
+├── constants.ts # shared constants (page sizes, enums)
+├── schemas/common.ts # shared Zod schema fragments
 ├── services/
-│   ├── supabase.ts    # Supabase client + column list + error formatting
-│   └── format.ts       # markdown/JSON response helpers, pagination
-└── tools/              # one file per tool
-```
+│ ├── supabase.ts # Supabase client + column list + error formatting
+│ └── format.ts # markdown/JSON response helpers, pagination
+└── tools/ # one file per tool
+
 
 ## Known follow-ups (not built yet)
 

@@ -12,6 +12,7 @@ import { authenticateCatalogActor, requireCatalogWritePermission } from './src/a
 import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { storePlantImage } from './src/storage/supabase-images.js';
 import { logDriveImport, getDriveImports } from './src/db/drive.js';
+import { searchGbifTaxa, GbifRateLimitedError } from './src/integrations/gbif.js';
 
 
 
@@ -129,6 +130,7 @@ const aiLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 8, standardHeaders: 
 const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към каталога. Опитайте отново по-късно.' } });
 const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
+const gbifLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към GBIF. Опитайте отново по-късно.' } });
 function isCatalogInputError(error) {
   return /Invalid plant id|required|photos must|No supported/.test(error.message);
 }
@@ -321,6 +323,27 @@ app.get('/api/config', staticAssetLimiter, (req, res) => {
 // access and does not bypass requireCatalogWritePermission on writes.
 app.get('/api/auth/whoami', moderateLimiter, authenticateCatalogActor, (req, res) => {
   res.json({ id: req.catalogActor.id, email: req.catalogActor.email, role: req.catalogActor.role });
+});
+
+
+// GBIF taxonomy autocomplete (P2.1). Read-only proxy: results are shown as
+// candidates only, nothing is written to a plant record here. Gated behind
+// login (any role) so an anonymous visitor cannot burn the shared GBIF
+// rate-limit budget; results are cached server-side in src/integrations/gbif.js.
+app.get('/api/gbif/search', gbifLimiter, authenticateCatalogActor, async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q : '';
+  if (query.length > 200) return res.status(400).json({ error: 'Query too long.' });
+  try {
+    const candidates = await searchGbifTaxa(query);
+    res.json({ candidates });
+  } catch (error) {
+    if (error instanceof GbifRateLimitedError) {
+      res.set('Retry-After', String(error.retryAfterSeconds));
+      return res.status(429).json({ error: 'GBIF rate-limited this request.', retryAfterSeconds: error.retryAfterSeconds });
+    }
+    console.error('GBIF search failed:', error.message);
+    res.status(502).json({ error: 'GBIF lookup is currently unavailable.' });
+  }
 });
 
 

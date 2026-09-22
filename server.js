@@ -148,7 +148,10 @@ app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ limit: '8mb', extended: true }));
 
 
-const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
+// /theme-init.js and /app.js are the former inline <script> blocks of
+// index.html, served as same-origin files so CSP script-src needs no
+// 'unsafe-inline'.
+const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js'), '/theme-init.js': path.join(__dirname, 'theme-init.js'), '/app.js': path.join(__dirname, 'app.js') };
 app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
 
 // P2.3: vendored @supabase/supabase-js UMD bundle (see vendor/supabase-js.umd.js

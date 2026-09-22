@@ -1361,6 +1361,10 @@
       });
     }
 
+    // Display-only fallback for empty optional text fields. Never used for
+    // values that are sent back to the API (see editPlant/savePlant).
+    const shown = (value, fallback) => (typeof value === 'string' && value.trim()) ? value : fallback;
+
     // Badge helper
     const sc = s => (s && s.startsWith('Потвърдено')) ? 'badge' : (s && s.startsWith('Неопределимо')) ? 'badge unc' : 'badge prob';
 
@@ -1452,6 +1456,25 @@
       else btn.classList.remove('visible');
     }, { passive: true });
 
+    // Shown when /api/plants served the read-only AI archive instead of the
+    // live Supabase catalog (Supabase down/empty), so the fallback is not
+    // silently mistaken for real catalog data.
+    function showCatalogSourceNotice(source) {
+      let notice = document.getElementById('catalogSourceNotice');
+      const grid = document.getElementById('grid');
+      if (source !== 'archive-fallback') {
+        if (notice) notice.remove();
+        return;
+      }
+      if (notice || !grid || !grid.parentNode) return;
+      notice = document.createElement('div');
+      notice.id = 'catalogSourceNotice';
+      notice.setAttribute('role', 'status');
+      notice.style.cssText = 'margin:0 0 12px;padding:10px 14px;border-radius:8px;background:#fff4e5;color:#7a4b00;font-size:14px;';
+      notice.textContent = '⚠️ Живият каталог (Supabase) не е достъпен — показва се архивно AI копие само за четене. Редакция и изтриване не са възможни.';
+      grid.parentNode.insertBefore(notice, grid);
+    }
+
     // Load Plants from REST API
     async function loadPlants(retries = 2) {
       try {
@@ -1460,6 +1483,7 @@
           throw new Error('Грешка при зареждане на растенията.');
         }
         const dataList = await res.json();
+        showCatalogSourceNotice(res.headers.get('X-Catalog-Source'));
         const families = new Set();
         window.allPlants = [];
 
@@ -1471,13 +1495,15 @@
             family: data.family || '',
             photos: Array.isArray(data.photos) ? data.photos : [data.photos || 'placeholder.jpg'],
             confidence: data.confidence || 'Вероятно',
-            recognition: data.recognition || 'Няма данни',
-            habitat: data.habitat || '-',
-            lookalikes: data.lookalikes || '-',
-            benefits: data.benefits || '-',
-            risks: data.risks || '-',
-            uses: data.uses || '-',
-            funFact: data.funFact || '-',
+            // Raw values ('' when empty): display fallbacks are applied only
+            // in drawModal via shown(), so the editor never saves them back.
+            recognition: data.recognition || '',
+            habitat: data.habitat || '',
+            lookalikes: data.lookalikes || '',
+            benefits: data.benefits || '',
+            risks: data.risks || '',
+            uses: data.uses || '',
+            funFact: data.funFact || '',
             author: data.authorEmail || ''
           });
           if (data.family) {
@@ -1681,29 +1707,23 @@
       const result = await res.json();
       const record = result.record;
 
+      // Only AI-returned values are stored; fields the AI did not provide
+      // stay empty (null) instead of fabricated filler text. Confidence is
+      // sent raw ('0.92') and labelled server-side as an AI suggestion; the
+      // AI safety note is explicitly marked as unverified (CLAUDE.md §4.13/14).
+      const joinList = (v) => Array.isArray(v) ? v.join(', ') : (v || null);
       const pData = {
         commonName: record.likely_common_name_bg || 'Неопределено растение',
         latinName: record.likely_scientific_name || 'Неопределен таксон',
-        family: record.family || 'Семейство',
+        family: record.family || null,
         photos: [],
-        confidence: (() => {
-          if (typeof record.confidence === 'number') {
-            const pct = Math.round(record.confidence * 100) + '%';
-            if (record.confidence >= 0.8) return 'Потвърдено (AI ' + pct + ')';
-            if (record.confidence >= 0.4) return 'Вероятно (AI ' + pct + ')';
-            return 'Неопределимо (AI ' + pct + ')';
-          }
-          return 'Вероятно (AI Анализ)';
-        })(),
-        recognition: record.visible_features || 'Няма данни',
-        habitat: 'Автоматично разпознато местообитание',
-        lookalikes: Array.isArray(record.possible_lookalikes) ? record.possible_lookalikes.join(', ') : (record.possible_lookalikes || '-'),
-        benefits: 'Потенциална екологична роля',
-        risks: record.safety_note || 'Внимание',
-        uses: 'AI фотографско наблюдение',
-        funFact: Array.isArray(record.additional_photos_needed) ? record.additional_photos_needed.join(', ') : (record.additional_photos_needed || '-'),
-        authorEmail: window.currentUser ? window.currentUser.email : 'Анонимен ботаник',
-        authorUid: window.currentUser ? window.currentUser.uid : null
+        confidence: (typeof record.confidence === 'number' && record.confidence >= 0 && record.confidence <= 1)
+          ? String(record.confidence)
+          : 'Вероятно (AI Анализ)',
+        recognition: record.visible_features || null,
+        lookalikes: joinList(record.possible_lookalikes),
+        risks: record.safety_note ? 'AI бележка (непроверена): ' + record.safety_note : null,
+        funFact: joinList(record.additional_photos_needed)
       };
 
       const createRes = await fetch('/api/plants', {
@@ -1847,21 +1867,21 @@
         </div>
 
         <h3>Разпознаване (диагностични белези)</h3>
-        <p>${escapeHtml(p.recognition)}</p>
-        <p><b>Местообитание и разпространение:</b> ${escapeHtml(p.habitat)}</p>
-        <p><b>Възможни двойници:</b> ${escapeHtml(p.lookalikes)}</p>
+        <p>${escapeHtml(shown(p.recognition, 'Няма данни'))}</p>
+        <p><b>Местообитание и разпространение:</b> ${escapeHtml(shown(p.habitat, 'Няма данни'))}</p>
+        <p><b>Възможни двойници:</b> ${escapeHtml(shown(p.lookalikes, '-'))}</p>
 
         <h3>Ползи и екологична роля</h3>
-        <p>${escapeHtml(p.benefits)}</p>
+        <p>${escapeHtml(shown(p.benefits, 'Няма данни'))}</p>
 
         <h3>Вреди и рискове (токсичност)</h3>
-        <p>${escapeHtml(p.risks)}</p>
+        <p>${escapeHtml(shown(p.risks, 'Няма данни — рисковете не са проверени.'))}</p>
 
         <h3>Традиционни и съвременни употреби</h3>
-        <p>${escapeHtml(p.uses)}</p>
+        <p>${escapeHtml(shown(p.uses, 'Няма данни'))}</p>
 
         <h3>Любопитен факт</h3>
-        <p>${escapeHtml(p.funFact)}</p>
+        <p>${escapeHtml(shown(p.funFact, '-'))}</p>
 
         <div class="note">
           <b>Забележка за точност:</b> При „Вероятно“ и „Неопределимо“ липсват един или повече диагностични белези. Не използвай записа за ядливост, самолечение или бране от природата.

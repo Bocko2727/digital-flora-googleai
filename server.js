@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { GoogleGenAI } from '@google/genai';
 import { getOrCreateUser, getUsers } from './src/db/users.js';
-import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
+import { seedPlantsIfEmpty, getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { storePlantImage } from './src/storage/supabase-images.js';
@@ -162,38 +162,46 @@ const uploadsDir = path.join(__dirname, 'images', 'uploads');
 try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message); }
 
 
+// Maps one AI-generated botanical-archive item (data/review-results.json)
+// to the catalog shape. Optional text stays '' when absent — display
+// fallbacks live in the UI only — and confidence goes through the same
+// provenance-aware mapper as Supabase rows (never 'Потвърдено' for AI).
+function archiveItemToPlant(item, idx) {
+  const lookalikes = Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '');
+  return { id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || '', photos: [item.file || 'placeholder.jpg'], confidence: mapSupabaseConfidence(item.confidence), recognition: item.visible_features || '', habitat: item.habitat || '', lookalikes, benefits: item.benefits || '', risks: item.safety_note || item.risks || '', uses: item.uses || '', funFact: item.funFact || '', authorEmail: '', createdAt: item.analyzed_at || null };
+}
+
+// Sends the archive fallback list; returns false when the archive is missing.
+// Sets X-Catalog-Source so the UI can tell the user it is not seeing the
+// live Supabase catalog (records are read-only, ids are json_N).
+function sendArchiveFallback(res) {
+  const jsonPath = path.join(__dirname, 'data', 'review-results.json');
+  if (!fs.existsSync(jsonPath)) return false;
+  const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  res.setHeader('X-Catalog-Source', 'archive-fallback');
+  res.json((data.items || []).map(archiveItemToPlant));
+  return true;
+}
+
+
 // REST CRUD for Plants. Supabase Postgres is the catalog source of truth
 // for reads (Task 4); the JSON archive remains only as a documented
-// fallback for when Supabase is unreachable or not yet configured. Writes
-// are disabled below until Supabase-authenticated writes land (Task 5).
+// fallback for when Supabase is unreachable or not yet configured.
 app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res) => {
   try {
     const plantsList = await getSupabasePlants();
     if (plantsList && plantsList.length > 0) {
+      res.setHeader('X-Catalog-Source', 'supabase');
       return res.json(plantsList);
     }
-
-
-    // Fallback to review-results.json if Supabase returned 0/unavailable
-    const jsonPath = path.join(__dirname, 'data', 'review-results.json');
-    if (fs.existsSync(jsonPath)) {
-      const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
-      return res.json(items);
-    }
+    if (sendArchiveFallback(res)) return;
     res.json([]);
   } catch (err) {
     console.error('Fetch plants error:', err);
-    // Fallback to review-results.json on Supabase connection error
     try {
-      const jsonPath = path.join(__dirname, 'data', 'review-results.json');
-      if (fs.existsSync(jsonPath)) {
-        const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-        const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
-        return res.json(items);
-      }
-    } catch (e) { }
-    res.status(500).json({ error: err.message || 'Грешка при извличане от базата данни' });
+      if (sendArchiveFallback(res)) return;
+    } catch (e) { console.error('Archive fallback failed:', e.message); }
+    res.status(500).json({ error: 'Грешка при извличане от базата данни' });
   }
 });
 

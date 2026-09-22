@@ -1,11 +1,14 @@
--- Applied remotely on 2026-09-21 via mcp__Supabase__apply_migration.
--- Source proposal: docs/migrations/2026-09-21_add_gbif_taxonomy_fields.sql
--- (kept there with full design notes and rollback SQL; this stub exists
--- only to align Supabase CLI migration history, matching the convention
--- used by the other historical migrations in this folder).
---
--- Summary: adds public.plants.gbif_taxonomy (jsonb, nullable) and
--- public.plants.taxonomy_status (text, default 'manual-unverified', checked
--- against manual-unverified|source-suggested|editor-confirmed|needs-review).
--- Additive only - no existing column, row, or RLS policy changed. Verified
--- post-apply: 98/98 rows intact, all defaulted to 'manual-unverified'.
+alter table public.plants
+  add column if not exists gbif_taxonomy jsonb;
+
+alter table public.plants
+  add column if not exists taxonomy_status text not null default 'manual-unverified';
+
+alter table public.plants
+  add constraint plants_taxonomy_status_check
+  check (taxonomy_status in ('manual-unverified', 'source-suggested', 'editor-confirmed', 'needs-review'));
+
+comment on column public.plants.gbif_taxonomy is
+  'GBIF Backbone Taxonomy lookup result for this record, saved only after editor confirmation. Never auto-published as verified fact.';
+comment on column public.plants.taxonomy_status is
+  'Provenance of the taxonomy fields: manual-unverified | source-suggested | editor-confirmed | needs-review.';

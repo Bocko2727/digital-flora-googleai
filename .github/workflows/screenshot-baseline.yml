@@ -1,0 +1,29 @@
+name: Generate screenshot baselines
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-baselines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Generate screenshot baselines
+        run: npx playwright test tests/e2e/screenshots.spec.js --update-snapshots
+      - name: Upload baseline snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-baselines
+          path: tests/e2e/screenshots.spec.js-snapshots/
+          retention-days: 7

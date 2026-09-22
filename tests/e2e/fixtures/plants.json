@@ -1,0 +1,47 @@
+[
+  {
+    "id": "e2e-plant-1",
+    "commonName": "Обикновена глухарче",
+    "latinName": "Taraxacum officinale",
+    "family": "Asteraceae (Сложноцветни)",
+    "photos": ["/icon.svg"],
+    "confidence": "Потвърдено",
+    "recognition": "Назъбени листа, жълто съцветие.",
+    "habitat": "Ливади, крайпътища.",
+    "lookalikes": "-",
+    "benefits": "Медоносно растение.",
+    "risks": "-",
+    "uses": "Салати.",
+    "funFact": "Семената се разпръскват с вятър."
+  },
+  {
+    "id": "e2e-plant-2",
+    "commonName": "Полски мак",
+    "latinName": "Papaver rhoeas",
+    "family": "Papaveraceae (Макови)",
+    "photos": ["/icon.svg"],
+    "confidence": "Вероятно",
+    "recognition": "Червени венчелистчета, черна основа.",
+    "habitat": "Житни ниви.",
+    "lookalikes": "-",
+    "benefits": "-",
+    "risks": "Токсичен в големи количества.",
+    "uses": "-",
+    "funFact": "Символ на Първата световна война."
+  },
+  {
+    "id": "e2e-plant-3",
+    "commonName": "Лечебна лайка",
+    "latinName": "Matricaria chamomilla",
+    "family": "Asteraceae (Сложноцветни)",
+    "photos": [],
+    "confidence": "Потвърдено",
+    "recognition": "Ароматно, дребни бели цветове с жълт център.",
+    "habitat": "Нарушени почви, полета.",
+    "lookalikes": "-",
+    "benefits": "Успокояващ чай.",
+    "risks": "-",
+    "uses": "Билков чай.",
+    "funFact": "Използва се от древността."
+  }
+]

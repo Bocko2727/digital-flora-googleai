@@ -5,13 +5,13 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "clean": "rm -rf dist"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",

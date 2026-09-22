@@ -2227,9 +2227,14 @@
           console.warn('Service Worker registration skipped:', err);
         });
       });
+      // Reload only when an already-controlling worker is replaced (an update
+      // the user accepted). On a first visit sw.js calls clients.claim(),
+      // which also fires controllerchange; reloading then would throw away
+      // whatever the user was doing (search, an edit, an upload in progress).
+      const hadControllerAtLoad = Boolean(navigator.serviceWorker.controller);
       let reloadedForUpdate = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloadedForUpdate) return;
+        if (!hadControllerAtLoad || reloadedForUpdate) return;
         reloadedForUpdate = true;
         window.location.reload();
       });

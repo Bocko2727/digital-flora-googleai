@@ -366,11 +366,11 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
     try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl); } catch (dbError) {
       // The Storage object already exists; it is NOT deleted here (storage
       // deletes need explicit approval). Log the key so it can be traced.
-      console.error(`Photo upload: stored ${stored.objectKey} but could not attach it to plant ${req.params.id}:`, dbError.message);
+      console.error('Photo upload: stored %s but could not attach it to plant %s: %s', stored.objectKey, req.params.id, dbError.message);
       return res.status(502).json({ error: 'Image was stored but could not be attached to the plant.', code: 'PHOTO_ATTACH_FAILED' });
     }
     if (!updatedPlant) {
-      console.error(`Photo upload: stored ${stored.objectKey} but plant ${req.params.id} disappeared before attach.`);
+      console.error('Photo upload: stored %s but plant %s disappeared before attach.', stored.objectKey, req.params.id);
       return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
     }
 

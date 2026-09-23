@@ -6,12 +6,10 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { GoogleGenAI } from '@google/genai';
-import { getOrCreateUser, getUsers } from './src/db/users.js';
-import { seedPlantsIfEmpty, getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
+import { getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
-import { logDriveImport, getDriveImports } from './src/db/drive.js';
 
 
 
@@ -299,29 +297,6 @@ app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWrite
 });
 
 
-// Legacy Cloud SQL endpoints: authenticated only. A caller may sync only
-// their own verified identity; Drive import logging needs write access.
-app.post('/api/users/sync', moderateLimiter, authenticateCatalogActor, async (req, res) => {
-  try {
-    const { uid, email, displayName, photoUrl } = req.body;
-    if (!uid || !email) return res.status(400).json({ error: 'Липсва uid или email' });
-    if (uid !== req.catalogActor.id || email !== req.catalogActor.email) return res.status(403).json({ error: 'Може да синхронизирате само собствения си профил.', code: 'USER_SYNC_FORBIDDEN' });
-    const user = await getOrCreateUser(uid, email, displayName, photoUrl);
-    res.json({ success: true, user });
-  } catch (err) { console.error('User sync error:', err); res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' }); }
-});
-
-
-app.post('/api/drive/log', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
-  try {
-    const { fileId, fileName, mimeType, userUid } = req.body;
-    if (!fileId || !fileName) return res.status(400).json({ error: 'Липсва fileId или fileName' });
-    const log = await logDriveImport(fileId, fileName, mimeType, userUid);
-    res.json({ success: true, log });
-  } catch (err) { console.error('Drive log error:', err); res.status(500).json({ error: err.message || 'Грешка при запис на Drive импорт' }); }
-});
-
-
 app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey, kiloConfigured: !!kiloApiKey, kiloModel: kiloModel }); });
 
 
@@ -415,7 +390,7 @@ app.use((err, req, res, next) => { console.error('Unhandled Express error:', err
 
 
 const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); seedPlantsIfEmpty().catch(e => { console.error('Background seed error:', e); }); });
+const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
 
 
 process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });

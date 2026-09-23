@@ -6,12 +6,10 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { GoogleGenAI } from '@google/genai';
-import { getOrCreateUser, getUsers } from './src/db/users.js';
-import { seedPlantsIfEmpty, getSupabasePlants } from './src/db/plants.js';
+import { getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
-import { deleteSupabasePlant, insertSupabasePlant, updateSupabasePlant } from './src/db/supabase-catalog.js';
-import { storePlantImage } from './src/storage/supabase-images.js';
-import { logDriveImport, getDriveImports } from './src/db/drive.js';
+import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
+import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
 
 
 
@@ -23,12 +21,15 @@ const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 
-// P1.1 (Ден 4 security hardening): script-src keeps 'unsafe-inline' for now
-// because index.html relies on 42+ inline onclick/onchange/oninput
-// attributes — CSP nonces only cover <script nonce> tags, not inline event
-// handler attributes, so a nonce-only policy would silently break every
-// button in the catalog. Migrating those handlers to addEventListener is
-// tracked as a separate, larger follow-up (not part of this commit).
+// P1.1 (Ден 4 security hardening), completed: script-src no longer allows
+// 'unsafe-inline'. index.html has no inline <script> blocks (they live in
+// same-origin /theme-init.js and /app.js) and no inline on*="" handler
+// attributes (app.js uses delegated addEventListener listeners keyed on
+// data-action / data-change-action / data-input-action, plus a
+// capture-phase 'error' listener for img[data-fallback]). script-src-attr
+// is 'none' so any reintroduced inline handler fails loudly in the console
+// instead of silently widening the policy. style-src keeps 'unsafe-inline'
+// because inline style="" attributes are still used (out of scope).
 // supabase-js is vendored locally (P2.3, vendor/supabase-js.umd.js) rather
 // than imported at runtime from esm.sh, so script-src does not need that
 // CDN origin. apis.google.com is the legacy Drive-picker loader (out of
@@ -39,12 +40,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://apis.google.com'],
-      // Helmet defaults script-src-attr to 'none', which blocks inline
-      // onclick/onchange/oninput attributes separately from script-src even
-      // with 'unsafe-inline' there — must be set explicitly or every button
-      // in the catalog breaks.
-      scriptSrcAttr: ["'unsafe-inline'"],
+      scriptSrc: ["'self'", 'https://apis.google.com'],
+      scriptSrcAttr: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
       connectSrc: ["'self'", 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
@@ -130,7 +127,7 @@ const catalogReadLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 300, standa
 const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 function isCatalogInputError(error) {
-  return /Invalid plant id|required|photos must|No supported/.test(error.message);
+  return /Invalid plant id|Invalid taxonomy status|required|photos must|No supported/.test(error.message);
 }
 
 
@@ -143,11 +140,15 @@ function forwardCatalogMutationError(res, next, error) {
   }
   return next(error);
 }
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '25mb', extended: true }));
+// Largest legitimate body is one 5 MB image as base64 (~6.7 MB) plus JSON.
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ limit: '8mb', extended: true }));
 
 
-const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
+// /theme-init.js and /app.js are the former inline <script> blocks of
+// index.html, served as same-origin files so CSP script-src needs no
+// 'unsafe-inline'.
+const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js'), '/theme-init.js': path.join(__dirname, 'theme-init.js'), '/app.js': path.join(__dirname, 'app.js') };
 app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
 
 // P2.3: vendored @supabase/supabase-js UMD bundle (see vendor/supabase-js.umd.js
@@ -155,45 +156,53 @@ app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.
 app.use('/vendor', staticAssetLimiter, express.static(path.join(__dirname, 'vendor'), { dotfiles: 'deny', index: false }));
 
 
-app.use('/images', express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
+app.use('/images', staticAssetLimiter, express.static(path.join(__dirname, 'images'), { dotfiles: 'deny', index: false }));
 
 
 const uploadsDir = path.join(__dirname, 'images', 'uploads');
 try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { console.warn('Внимание: Не може да се създаде папка uploads (възможно е read-only filesystem):', e.message); }
 
 
+// Maps one AI-generated botanical-archive item (data/review-results.json)
+// to the catalog shape. Optional text stays '' when absent — display
+// fallbacks live in the UI only — and confidence goes through the same
+// provenance-aware mapper as Supabase rows (never 'Потвърдено' for AI).
+function archiveItemToPlant(item, idx) {
+  const lookalikes = Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '');
+  return { id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || '', photos: [item.file || 'placeholder.jpg'], confidence: mapSupabaseConfidence(item.confidence), recognition: item.visible_features || '', habitat: item.habitat || '', lookalikes, benefits: item.benefits || '', risks: item.safety_note || item.risks || '', uses: item.uses || '', funFact: item.funFact || '', authorEmail: '', createdAt: item.analyzed_at || null };
+}
+
+// Sends the archive fallback list; returns false when the archive is missing.
+// Sets X-Catalog-Source so the UI can tell the user it is not seeing the
+// live Supabase catalog (records are read-only, ids are json_N).
+function sendArchiveFallback(res) {
+  const jsonPath = path.join(__dirname, 'data', 'review-results.json');
+  if (!fs.existsSync(jsonPath)) return false;
+  const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  res.setHeader('X-Catalog-Source', 'archive-fallback');
+  res.json((data.items || []).map(archiveItemToPlant));
+  return true;
+}
+
+
 // REST CRUD for Plants. Supabase Postgres is the catalog source of truth
 // for reads (Task 4); the JSON archive remains only as a documented
-// fallback for when Supabase is unreachable or not yet configured. Writes
-// are disabled below until Supabase-authenticated writes land (Task 5).
+// fallback for when Supabase is unreachable or not yet configured.
 app.get(['/api/plants', '/api/sql/plants'], catalogReadLimiter, async (req, res) => {
   try {
     const plantsList = await getSupabasePlants();
     if (plantsList && plantsList.length > 0) {
+      res.setHeader('X-Catalog-Source', 'supabase');
       return res.json(plantsList);
     }
-
-
-    // Fallback to review-results.json if Supabase returned 0/unavailable
-    const jsonPath = path.join(__dirname, 'data', 'review-results.json');
-    if (fs.existsSync(jsonPath)) {
-      const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
-      return res.json(items);
-    }
+    if (sendArchiveFallback(res)) return;
     res.json([]);
   } catch (err) {
     console.error('Fetch plants error:', err);
-    // Fallback to review-results.json on Supabase connection error
     try {
-      const jsonPath = path.join(__dirname, 'data', 'review-results.json');
-      if (fs.existsSync(jsonPath)) {
-        const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-        const items = (data.items || []).map((item, idx) => ({ id: `json_${idx}`, commonName: item.likely_common_name_bg || 'Неопределено растение', latinName: item.likely_scientific_name || 'Неопределен таксон', family: item.family || 'Семейство', photos: [item.file || 'placeholder.jpg'], confidence: item.confidence === 'high' ? 'Потвърдено (Ботанически архив)' : item.confidence === 'low' ? 'Неопределимо (Ботанически архив)' : 'Вероятно (Ботанически архив)', recognition: item.visible_features || 'Няма допълнителни данни', habitat: item.habitat || 'Ботанически образец от България', lookalikes: Array.isArray(item.possible_lookalikes) ? item.possible_lookalikes.join(', ') : (item.possible_lookalikes || '-'), benefits: item.benefits || 'Ботаническо и флористично значение за биоразнообразието.', risks: item.safety_note || item.risks || 'Няма регистрирани критични рискове.', uses: item.uses || 'Хербариен образец и ботаническо наблюдение.', funFact: item.funFact || item.additional_photos_needed || 'Изисква се наблюдение в период на активен цъфтеж.', authorEmail: 'digitalflora@botany.bg', createdAt: item.analyzed_at || new Date().toISOString() }));
-        return res.json(items);
-      }
-    } catch (e) { }
-    res.status(500).json({ error: err.message || 'Грешка при извличане от базата данни' });
+      if (sendArchiveFallback(res)) return;
+    } catch (e) { console.error('Archive fallback failed:', e.message); }
+    res.status(500).json({ error: 'Грешка при извличане от базата данни' });
   }
 });
 
@@ -230,7 +239,9 @@ app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, require
 });
 
 
-app.post('/api/qa', aiLimiter, async (req, res) => {
+// AI endpoints call a paid/credit-consuming provider (CLAUDE.md §4.12), so
+// they are restricted to catalog editors/admins, same as catalog writes.
+app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;
   if (!filename) return res.status(400).json({ error: 'Липсва файл' });
   let base64 = null;
@@ -238,7 +249,9 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
   const localPath = resolveSafeImagePath(filename);
   if (localPath) base64 = fs.readFileSync(localPath).toString('base64');
   if (!base64) { const remote = await fetchAllowedGithubImage(filename); if (remote) { base64 = remote.buffer.toString('base64'); mimeType = remote.contentType || mimeType; } }
-  if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) { const match = filename.match(/^data:(image\/\w+);base64,(.*)$/); if (match) { mimeType = match[1]; base64 = match[2]; } }
+  if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) {
+    try { const parsed = parsePlantImageDataUri(filename); mimeType = parsed.mimeType; base64 = parsed.buffer.toString('base64'); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
+  }
   if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
   const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${claimedName}" (${latinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
   try {
@@ -254,20 +267,22 @@ app.post('/api/qa', aiLimiter, async (req, res) => {
 });
 
 
-app.post('/api/upload', aiLimiter, async (req, res) => {
+app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'Няма качена снимка.' });
+  let parsed;
+  // Same validation as Storage uploads: JPEG/PNG/WebP only, magic bytes
+  // must match, max 5 MB. The on-disk extension comes from the validated
+  // MIME type, never from the client, so no .html/.svg can be written into
+  // the publicly served images/ directory.
+  try { parsed = parsePlantImageDataUri(image); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
   try {
-    const match = image.match(/^data:(image\/(\w+));base64,(.*)$/);
-    if (!match) return res.status(400).json({ error: 'Невалиден файлов формат.' });
-    const mimeType = match[1];
-    let ext = match[2] || 'jpg';
-    if (ext === 'jpeg') ext = 'jpg';
-    const base64Image = match[3];
-    const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const { buffer, mimeType, extension } = parsed;
+    const base64Image = buffer.toString('base64');
+    const fileName = `plant_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
     const filePath = path.join(uploadsDir, fileName);
     let relativeUrl = '';
-    try { fs.writeFileSync(filePath, Buffer.from(base64Image, 'base64')); relativeUrl = `images/uploads/${fileName}`; } catch (e) { console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message); relativeUrl = ''; }
+    try { fs.writeFileSync(filePath, buffer); relativeUrl = `images/uploads/${fileName}`; } catch (e) { console.warn('Could not save file to disk (read-only FS), proceeding with AI analysis only:', e.message); relativeUrl = ''; }
     const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{\n  "likely_scientific_name": "Latin name",\n  "likely_common_name_bg": "Bulgarian name",\n  "family": "Botanical family in Latin or Bulgarian",\n  "confidence": 0.9,\n  "identification_level": "species",\n  "visible_features": "Description in Bulgarian",\n  "possible_lookalikes": "Similar plants",\n  "safety_note": "Toxicity or warnings in Bulgarian",\n  "additional_photos_needed": "What else to photograph for better ID"\n}`;
     let aiData;
     try {
@@ -277,28 +292,8 @@ app.post('/api/upload', aiLimiter, async (req, res) => {
       if (kiloApiKey) { console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message); const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType); const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim(); aiData = JSON.parse(cleanedText); } else { throw geminiErr; }
     }
     aiData.analyzed_at = new Date().toISOString();
-    res.json({ success: true, record: aiData, imageUrl: relativeUrl, base64: image });
+    res.json({ success: true, record: aiData, imageUrl: relativeUrl });
   } catch (error) { console.error('Upload Error:', error); res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' }); }
-});
-
-
-app.post('/api/users/sync', moderateLimiter, async (req, res) => {
-  try {
-    const { uid, email, displayName, photoUrl } = req.body;
-    if (!uid || !email) return res.status(400).json({ error: 'Липсва uid или email' });
-    const user = await getOrCreateUser(uid, email, displayName, photoUrl);
-    res.json({ success: true, user });
-  } catch (err) { console.error('User sync error:', err); res.status(500).json({ error: err.message || 'Грешка при синхронизация на потребител' }); }
-});
-
-
-app.post('/api/drive/log', moderateLimiter, async (req, res) => {
-  try {
-    const { fileId, fileName, mimeType, userUid } = req.body;
-    if (!fileId || !fileName) return res.status(400).json({ error: 'Липсва fileId или fileName' });
-    const log = await logDriveImport(fileId, fileName, mimeType, userUid);
-    res.json({ success: true, log });
-  } catch (err) { console.error('Drive log error:', err); res.status(500).json({ error: err.message || 'Грешка при запис на Drive импорт' }); }
 });
 
 
@@ -334,15 +329,27 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
     if (!image) return res.status(400).json({ error: 'No image provided.', code: 'IMAGE_REQUIRED' });
 
 
-    const existingPlants = await getSupabasePlants();
-    const targetPlant = existingPlants.find((plant) => plant.id === req.params.id);
-    if (!targetPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    let exists;
+    try { exists = await supabasePlantExists(req.params.id); } catch (dbError) {
+      if (/Invalid plant id/.test(dbError.message)) throw dbError;
+      console.error('Photo upload: plant lookup failed:', dbError.message);
+      return res.status(502).json({ error: 'Catalog database is temporarily unavailable.', code: 'DATABASE_UNAVAILABLE' });
+    }
+    if (!exists) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
 
 
     const stored = await storePlantImage(req.params.id, image);
-    const currentPhotos = (Array.isArray(targetPlant.photos) ? targetPlant.photos : []).filter((p) => p && p !== 'placeholder.jpg');
-    const updatedPlant = await updateSupabasePlant(req.params.id, { photos: [...currentPhotos, stored.imageUrl] });
-    if (!updatedPlant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    let updatedPlant;
+    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl); } catch (dbError) {
+      // The Storage object already exists; it is NOT deleted here (storage
+      // deletes need explicit approval). Log the key so it can be traced.
+      console.error('Photo upload: stored %s but could not attach it to plant %s: %s', stored.objectKey, req.params.id, dbError.message);
+      return res.status(502).json({ error: 'Image was stored but could not be attached to the plant.', code: 'PHOTO_ATTACH_FAILED' });
+    }
+    if (!updatedPlant) {
+      console.error('Photo upload: stored %s but plant %s disappeared before attach.', stored.objectKey, req.params.id);
+      return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
+    }
 
 
     return res.status(201).json({ success: true, imageUrl: stored.imageUrl, objectKey: stored.objectKey, plant: updatedPlant });
@@ -383,7 +390,7 @@ app.use((err, req, res, next) => { console.error('Unhandled Express error:', err
 
 
 const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); seedPlantsIfEmpty().catch(e => { console.error('Background seed error:', e); }); });
+const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
 
 
 process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });

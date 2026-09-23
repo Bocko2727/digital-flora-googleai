@@ -16,7 +16,7 @@
 
 ## Активни проектни контракти
 
-- Работен branch: `refactor/catalog-foundation`. PR #1 → `main` остава **Draft**, никога не се merge-ва автономно. `main` е защитен.
+- Работен branch: `main` (работен trunk — виж CLAUDE.md §2/§6). `refactor/catalog-foundation` се синхронизира само за да тригне реален Vercel deploy (виж CLAUDE.md §2 за Production Branch нюанса).
 - Пълните твърди граници, работен цикъл и приоритети са в `CLAUDE.md` в root-а на repo-то — той е меродавният документ за git/security/QA дисциплина. Този файл (`AGENTS.md`) описва само стека и конвенциите за код.
 
 ## Backend сигурност — чеклист преди merge
@@ -84,7 +84,7 @@ Copilot Pro получава само изолирани, добре огран�
 - "Направи production-ready"
 - Масово изчистване на dead files
 - Общо "оправи security проблемите"
-- Каквото и да е от твърдия stop list в `CLAUDE.md` (§9)
+- Каквото и да е от твърдите граници в `CLAUDE.md` (§4)
 
 ## Как да ползвате този файл
 

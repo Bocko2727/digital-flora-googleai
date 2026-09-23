@@ -7,14 +7,13 @@
     "dev": "node server.js",
     "start": "node server.js",
     "build": "echo 'No build step required'",
-    "lint": "node --check server.js",
+    "lint": "node scripts/qa/check-syntax.js",
     "test": "node --test tests/*.test.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@google/genai": "^2.23.0",
     "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.45.3",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
@@ -22,7 +21,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.10"
+    "@types/pg": "^8.23.1"
   }
 }

@@ -1,85 +1,59 @@
-# Next session prompt — Digital Flora (written 2026-09-23 ~23:10 UTC)
+# Next session prompt — Digital Flora (written 2026-09-23, day session)
 
 Paste into a new Claude Code session on Bocko2727/digital-flora-googleai. Reply in Bulgarian. CLAUDE.md applies in full.
 
-## Context (done in the 2026-09-23 night session)
-- PR #12 is merged in main (`14d31f3`). Production (`refactor/catalog-foundation`) still runs the OLD code. The branches have diverged, so deploy with a merge commit whose tree equals main (commands in `docs/review/nightly-report-2026-09-23.md`, T2).
-- Draft PRs (all CI green at creation):
-
-| PR | What it does |
-|---|---|
-| #13 | AI-text label; review list of 89 AI botanical claims |
-| #14 | SW first-load reload fix (the root cause of most e2e flakes) |
-| #15 | e2e tests for PR #12 |
-| #16 | lint for all JS; validator test |
-| #17 | `taxonomy_status` wired, no migration |
-| #18 | gemini-review manual-only |
-| #19 | nightly report and specs (T9 image pipeline, T10 GBIF, T13 pagination), plus this prompt |
-| #20 | upload spec race fix |
-| #21 | CSP without 'unsafe-inline' |
-
-- #21 conflicts with #13, #14 and #17 because it moved the script out of `index.html` into `app.js`.
+## Context (verified 2026-09-23)
+- PRs #12–#22 are all in `main` (head `ed59388`). No open PRs except this session's lint/docs draft PR (`claude/repo-check-jr94ia`).
+- Production (`refactor/catalog-foundation`) is `da85adc`, whose tree is identical to `main`. The Vercel production deployment is READY, with 0 runtime errors in the last 24 h.
+- The owner-approved data work (old Task D) is done and recorded in `docs/review/data-changes-2026-09-23.md`, with rollback steps.
+- Checks on `main`: lint (35 files after this session's fix), 21/21 unit tests, secret scan 0, `npm audit --omit=dev` 0. e2e passes 46/50; the 4 failures are `screenshots.spec.js`, which has no baselines yet (Task B).
+- The Supabase MCP server failed to connect in this session (`ERR_PROXY_TUNNEL`), so no DB read-back was possible.
 
 ## Remaining tasks (flora-task-handoff format)
 
-## Task A: Rebase CSP PR #21 onto main after #13/#14/#17 merge
-Assigned to: Claude
-In scope:
-- merge main into `claude/csp-no-unsafe-inline`;
-- port the #13 AI mark, the #14 SW guard and the #17 taxonomy label and `#e_tax` into `app.js` / `data-*` attributes;
-- re-run the CSP console check and the e2e suite.
-Out of scope: new features.
-Depends on / blocks: the owner merging #13, #14 and #17.
-Done when: #21 is green, mergeable, with 0 CSP console errors.
-
 ## Task B: Screenshot baselines
 Assigned to: Claude
-In scope: run `screenshot-baseline.yml` (workflow_dispatch) on main after the UI PRs merge, and commit the baselines in a draft PR.
+In scope: run `screenshot-baseline.yml` (workflow_dispatch) on `main`, download its artifact, and commit the 4 PNGs to `tests/e2e/screenshots.spec.js-snapshots/` in a draft PR.
 Out of scope: changing the workflow.
-Depends on / blocks: A.
-Done when: `screenshots.spec.js` passes in CI.
+Depends on / blocks: nothing; needs a way to download the Actions artifact.
+Done when: `screenshots.spec.js` passes against the committed baselines.
 
-## Task C: Deploy (ONLY with the owner's explicit yes)
-Assigned to: Claude
-In scope: the T2 commands, the live checks, and a rollback if anything fails.
-Out of scope: Vercel settings.
-Depends on / blocks: merges; owner approval.
-Done when: production is READY and the live checks pass.
-
-## Task D: Owner-approved data work (each needs its own yes)
+## Task E: GBIF autocomplete (spec: `docs/specs/gbif-autocomplete.md`)
 Assigned to: Claude
 In scope:
-- `taxonomy_status` backfill (SQL in #17);
-- the group-A text rewrite (#13 list);
-- IMG_5512 needs-review record.
-Out of scope: anything not individually approved.
-Depends on / blocks: owner.
-Done when: each item is verified by SELECT, with its rollback kept.
+- the `GET /api/taxonomy/suggest` server proxy with a 24 h cache and a rate limit;
+- the editor UI on `#e_lname`;
+- mocked unit and e2e tests;
+- picking a suggestion sets `taxonomy_status = source-suggested`.
 
-## Task E: GBIF autocomplete implementation (spec in #19)
-Assigned to: Claude
-In scope: a server proxy with cache, the editor UI, mock tests, and `taxonomy_status = source-suggested`.
-Out of scope: Pl@ntNet, iNaturalist.
-Depends on / blocks: #17 merged; owner OK for a new external API (free, no key).
-Done when: e2e with a mocked GBIF passes and it is verified on a Vercel preview.
+Starting point: `src/integrations/gbif.js` and `tests/gbif-search.test.js` on the stale branch `claude/mcp-integration-codespaces-u1e36g`. Review them, don't trust them.
+Out of scope: Pl@ntNet, iNaturalist, re-classifying existing records.
+Depends on / blocks: owner OK for the new external API (§4.10; free, no key).
+Done when: the mocked e2e passes and the feature is verified on a Vercel preview.
 
-## Task F: Legacy cleanup (owner yes)
+## Task F2: Remove the GitHub raw image fallback (owner yes)
 Assigned to: Claude
-In scope:
-- remove the Cloud SQL code, the `.ts` duplicates and the drizzle deps;
-- remove the `/api/users/sync` and `/api/drive/log` endpoints;
-- remove or redirect the GitHub image fallback.
-Out of scope: data.
-Depends on / blocks: owner approval.
+In scope: `server.js` `fetchAllowedGithubImage` and its helpers, used by `/api/qa` (~l.251) and the image route (~l.376). It fetches from a different repo, `Bocko2727/digitalflora`, on `raw.githubusercontent.com`. Images now live in Supabase Storage, and a missing local file already gets the "Снимката липсва" SVG.
+Out of scope: Storage and data.
+Depends on / blocks: owner approval. First confirm that no production record still depends on it (check the Vercel runtime logs for such fetches).
 Done when: tests pass and nothing references the removed code.
 
+## Task G: Stale remote branches (owner yes, §4.9)
+Assigned to: Claude
+In scope: list the candidates below and delete them only after an explicit per-list yes.
+- merged: every `claude/*` branch of PRs #12–#22;
+- obsolete: `fix/multer-2.3.0` (multer is no longer a dependency), `add-claude-github-actions-1789988548672` (superseded by `claude.yml` on main), `claude/mcp-integration-codespaces-u1e36g` (only after Task E has taken what it needs).
+Out of scope: `main`, `refactor/catalog-foundation`.
+Done when: `git ls-remote --heads` shows only the live branches.
+
+## Standing constraint
+- `File_017.png` is still an orphan in Storage with an unresolved identification. Do not touch it without explicit approval (CLAUDE.md §2).
+
 ## Working mode
-- Agents: Explore for inventory; Plan for design; general-purpose with worktree isolation for independent code tasks (max 3). Run e2e from a path without dot-directories, because the server refuses to serve `/` from any path containing one (`dotfiles:'deny'`).
-- Skills: flora-pre-deploy, flora-qa-check, flora-feature-spec, flora-schema-change, supabase-postgres-best-practices, code-review (high), security-review.
-- Git: one task = one branch = one draft PR; subscribe to each PR and drive it to green. Never merge, never force-push.
-- Playwright: use a temp config with `launchOptions.executablePath: '/opt/pw-browsers/chromium'`; never run `playwright install`.
+- Git: one task = one branch = one draft PR. Never merge, never force-push.
+- Playwright: see `SKILL.md` → Tests (temp config with `executablePath: '/opt/pw-browsers/chromium'` and `webServer.cwd`; never `playwright install`).
+- Deploy only with the owner's explicit yes: sync `refactor/catalog-foundation` from `main` with a merge commit whose tree equals `main`.
 
 ## End of session
 1. Final report per CLAUDE.md §8, plus a "waiting for approval" list.
-2. Write the next prompt in this same format to `docs/handoff/NEXT_PROMPT.md` (draft PR).
-3. Schedule a continuation (send_later, +2h, max one) ONLY if work remains that does not need the owner.
+2. Rewrite this file for the next session (draft PR).

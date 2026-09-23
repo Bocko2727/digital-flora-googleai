@@ -21,8 +21,17 @@ are not repeated here.
 - `npm run test:e2e` — Playwright e2e (`tests/e2e/`). Backend is network-mocked
   via `tests/e2e/helpers.js::mockCatalogApi`, except `write-protection.spec.js`,
   which deliberately hits the real running server to prove the 401 auth boundary.
-- `npm run lint` — `node --check server.js` (syntax check only; no ESLint/Prettier
-  configured — don't add one without explicit approval).
+  In Claude Code cloud containers the pinned Playwright expects a newer browser
+  than the preinstalled one: run with a temp config (outside the repo) that sets
+  `launchOptions.executablePath: '/opt/pw-browsers/chromium'` and
+  `webServer.cwd` to the repo root; never `playwright install`.
+  `screenshots.spec.js` fails locally by design — its baselines are generated
+  only by `screenshot-baseline.yml` in CI and are not committed yet. Delete the
+  `*-snapshots/` folder it writes before committing.
+- `npm run lint` — `scripts/qa/check-syntax.js`: `node --check` on every tracked
+  root JS file (`server.js`, `app.js`, `sw.js`, `theme-init.js`,
+  `playwright.config.js`) and on `src/`, `scripts/`, `tests/` (syntax check only;
+  no ESLint/Prettier configured — don't add one without explicit approval).
 
 ## Botanical / catalog data QA
 

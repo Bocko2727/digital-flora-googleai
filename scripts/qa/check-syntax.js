@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Dependency-free syntax check: runs `node --check` on every tracked .js file
-// in server.js, src/, scripts/ and tests/. Exits 1 and lists failures.
+// at the repo root (server.js, app.js, sw.js, theme-init.js,
+// playwright.config.js) and in src/, scripts/ and tests/. Exits 1 and lists failures.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const targets = ['server.js', 'src', 'scripts', 'tests'];
+const targets = ['server.js', 'app.js', 'sw.js', 'theme-init.js', 'playwright.config.js', 'src', 'scripts', 'tests'];
 const skip = /(^|\/)(node_modules|vendor)\//;
 
 function walk(p) {

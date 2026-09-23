@@ -795,6 +795,20 @@
       font-size: 13px;
     }
 
+    .ai-text-mark {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--note-bg);
+      border: 1px solid var(--amber);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
     .sources {
       margin-top: 18px;
       padding-top: 12px;
@@ -1365,6 +1379,12 @@
     // values that are sent back to the API (see editPlant/savePlant).
     const shown = (value, fallback) => (typeof value === 'string' && value.trim()) ? value : fallback;
 
+    // True when the record's botanical text comes from an AI analysis (single
+    // upload "AI x%" or the AI-generated botanical archive) rather than from an
+    // editor. Such text is labelled as unverified (CLAUDE.md §4.13/§4.14).
+    const isAiSourced = (confidence) => /\bAI\b|архив|Vision/i.test(String(confidence || ''));
+    const AI_TEXT_MARK = '<span class="ai-text-mark" title="Текстът е генериран от AI и не е проверен от ботаник.">AI текст — непроверен</span>';
+
     // Badge helper
     const sc = s => (s && s.startsWith('Потвърдено')) ? 'badge' : (s && s.startsWith('Неопределимо')) ? 'badge unc' : 'badge prob';
 
@@ -1848,6 +1868,7 @@
       const viewEl = document.getElementById('view');
       if (!viewEl) return;
 
+      const aiMark = isAiSourced(p.confidence) ? AI_TEXT_MARK : '';
       viewEl.innerHTML = `
     <article class="layout">
       <div class="photo-column">
@@ -1878,21 +1899,21 @@
           <div><b>Статус</b>Наблюдаван образец</div>
         </div>
 
-        <h3>Разпознаване (диагностични белези)</h3>
+        <h3>Разпознаване (диагностични белези)${aiMark}</h3>
         <p>${escapeHtml(shown(p.recognition, 'Няма данни'))}</p>
         <p><b>Местообитание и разпространение:</b> ${escapeHtml(shown(p.habitat, 'Няма данни'))}</p>
         <p><b>Възможни двойници:</b> ${escapeHtml(shown(p.lookalikes, '-'))}</p>
 
-        <h3>Ползи и екологична роля</h3>
+        <h3>Ползи и екологична роля${aiMark}</h3>
         <p>${escapeHtml(shown(p.benefits, 'Няма данни'))}</p>
 
-        <h3>Вреди и рискове (токсичност)</h3>
+        <h3>Вреди и рискове (токсичност)${aiMark}</h3>
         <p>${escapeHtml(shown(p.risks, 'Няма данни — рисковете не са проверени.'))}</p>
 
-        <h3>Традиционни и съвременни употреби</h3>
+        <h3>Традиционни и съвременни употреби${aiMark}</h3>
         <p>${escapeHtml(shown(p.uses, 'Няма данни'))}</p>
 
-        <h3>Любопитен факт</h3>
+        <h3>Любопитен факт${aiMark}</h3>
         <p>${escapeHtml(shown(p.funFact, '-'))}</p>
 
         <div class="note">

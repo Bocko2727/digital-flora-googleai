@@ -1,0 +1,11 @@
+{
+  // Codespaces / Dev Containers: same Node major as CI (quality.yml) and Vercel (24.x).
+  // No secrets, no extra features, no deploy/migration/login steps.
+  "name": "digital-flora",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-24-bookworm",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "server.js", "onAutoForward": "notify" }
+  }
+}

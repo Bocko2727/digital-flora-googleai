@@ -39,13 +39,14 @@ are not repeated here.
 - `node --test tests/plant-data-validation.test.js` — validator smoke test.
 - `node scripts/qa/scan-secrets.js` — scans tracked text files for secrets.
 
-## Before every commit/push to `main`
+## Before every commit/push
 
-`main` is the working trunk (see CLAUDE.md §2) and has no automatic CI gate on
-push — `.github/workflows/quality.yml` only runs on PR or push to
-`refactor/catalog-foundation`. Compensate manually:
+Work on a feature branch and open a Draft PR to `main` — never push to `main`
+directly (CLAUDE.md §6). `.github/workflows/quality.yml` runs on every PR and on
+pushes to `main` and `refactor/catalog-foundation`; run the same checks first
+(Claude Code: skill `pre-merge-verify`):
 
-1. Run the targeted unit/e2e test for what changed.
+1. Run the targeted unit/e2e test for what changed, then `npm run lint` and `npm test`.
 2. `node scripts/qa/scan-secrets.js`.
 3. `git diff --check` + `git status --short` — confirm only the intended files changed.
 

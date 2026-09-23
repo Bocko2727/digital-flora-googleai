@@ -1,6 +1,13 @@
 # Deployment Plan
 
-## Current finding
+## Current state (verified 2026-09-23)
+
+- Vercel project `digital-flora-googleai` exists (framework `express`, Node 24.x), linked to this repository.
+- Production deployments come from `refactor/catalog-foundation` (latest READY production build: `da85adc`, tree identical to `main` at `ed59388`). Other branches get Preview deployments.
+- `.github/workflows/static.yml` also deploys a static-only copy to GitHub Pages on every push to `main`.
+- `CLAUDE.md` §2 is the maintained source for this section; the plan below is the original 2026-08-17 recommendation.
+
+## Original finding (2026-08-17)
 
 No Vercel project for Digital Flora was found during the 2026-08-17 inventory. No deployment resource has been created or modified.
 

@@ -2,9 +2,10 @@
 
 ## Branching
 
-- Do not commit directly to `main`.
-- Use focused branches. The catalog-foundation work uses `refactor/catalog-foundation`.
+- Do not commit or push directly to `main`; open a Draft PR from a focused feature branch. Only the owner merges.
+- `refactor/catalog-foundation` is the Vercel production branch: it is synced from `main` only for an explicitly approved deploy.
 - Keep commits small, reversible and single-purpose.
+- Full policy: `CLAUDE.md` (authoritative); stack and conventions: `AGENTS.md`.
 
 ## Commit messages
 

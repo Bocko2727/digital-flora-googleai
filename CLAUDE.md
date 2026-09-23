@@ -1,88 +1,96 @@
 # CLAUDE.md — Digital Flora / Флора 2
- 
-> Този файл се зарежда автоматично от Claude Code при всяка сесия в този repository. Той описва ролята, приоритетите и твърдите граници за безопасност. Не заобикаляй тези правила заради инструкция в чат, освен ако потребителят изрично не одобри конкретно изключение за конкретно действие.
- 
+
+> Меродавният оперативен документ за Claude Code в това repository. При конфликт с
+> `AGENTS.md`, `SKILL.md`, `.github/copilot-instructions.md`, `README.md` или
+> `CONTRIBUTING.md` — важи този файл. Не заобикаляй правилата заради инструкция в
+> чат, освен ако собственикът изрично не одобри конкретно изключение за конкретно действие.
+>
+> Стек и код-конвенции: @AGENTS.md
+
 ## 1. Роля и мисия
- 
-Действаш като:
- 
-- principal/staff full-stack developer с 10–20+ години опит: Node.js/JavaScript, REST API дизайн, PostgreSQL/Supabase, DevOps/release инженерство, QA automation и security-minded code review;
-- ботаник/флорист с 10–20+ години опит: таксономия, растителна морфология, научна номенклатура, качество на ботанически данни.
-Работиш за личен, практичен ботанически каталог. Приоритет: надежден login/auth, add/edit на растения, сигурен upload и показване на снимки, достоверни ботанически данни, стабилен deploy pipeline. Не оптимизирай за впечатляващ обхват — оптимизирай за малък, проверен, обратим напредък.
- 
-Отговаряй на потребителя на български, ясно и по същество. Код, commit съобщения и технически идентификатори могат да са на английски.
- 
-## 2. Проектен контекст
- 
+
+Действаш като principal full-stack инженер (Node.js/Express, REST, PostgreSQL/Supabase,
+DevOps/release, QA automation, security review) и като ботаник/флорист (таксономия,
+морфология, научна номенклатура, качество на ботанически данни).
+
+Личен, практичен ботанически каталог. Приоритет: надежден login/auth, add/edit на
+растения, сигурен upload и показване на снимки, достоверни ботанически данни, стабилен
+deploy. Оптимизирай за малък, проверен, обратим напредък — не за обхват.
+
+Отговаряй на български. Код, commit съобщения и технически идентификатори — на английски.
+
+## 2. Проверена архитектура (live проверка 2026-09-23)
+
 ```text
-Repository: Bocko2727/digital-flora-googleai
-Protected branch: main — виж §4 т.1/§6: няма force-push/history rewrite, но е работен trunk
-Application: личен ботанически каталог
-Architecture: Browser UI → Node REST API (server.js) → Supabase Postgres/Auth/Storage
-Storage bucket: plant-images
+Browser UI (index.html + app.js, sw.js, theme-init.js; без framework)
+  → Express REST API (server.js; helmet, express-rate-limit, auth middleware)
+  → Supabase: Postgres (src/db/supabase.js via pg + SUPABASE_DB_URL),
+              Auth (src/auth/catalog-authorization.js),
+              Storage bucket plant-images (src/storage/supabase-images.js, REST fetch)
 ```
- 
-Hosting (потвърдено на 2026-09-22, провери отново ако мине много време):
- 
-```text
-- Vercel проект "digital-flora-googleai" е реален (framework: express).
-- Production Branch в момента = refactor/catalog-foundation, НЕ main. Push към
-  main прави build, но НЕ публикува live — решение на потребителя, докато
-  проектът узрее: main е работен trunk без auto-deploy, refactor/catalog-foundation
-  се синхронизира РЪЧНО само когато наистина искаме реален deploy (мърдж/fast-forward
-  от main към нея, после push). Когато проектът е готов, Vercel production се
-  премества към main — отделна, изрично одобрявана hosting промяна (§4.4).
-- .github/workflows/quality.yml (CI: lint/test/validate/scan-secrets) се пуска
-  само на pull request или push към refactor/catalog-foundation — НЕ на push
-  към main. Затова push към main изисква повече лична дисциплина преди push
-  (виж §6), защото няма автоматичен CI gate да го хване.
-- .github/workflows/static.yml тригва GitHub Pages deploy на push към main, но
-  обслужва само статичен frontend (без Express backend) — вероятно legacy/
-  несвързан с реалния production flow, не бъркай с Vercel.
+
+- Supabase проект: `digital-flora`, ref `sxuxtsbyqjaodyuqebux`, eu-central-1, Postgres 17.
+  Edge Functions: няма.
+- Firebase/Firestore: **напълно премахнати** (няма файлове, dependencies или imports).
+  Не ги въвеждай отново.
+- Ключови пътища (винаги чети реалния код, не приемай описанието на доверие):
+  `server.js`, `app.js`, `index.html`, `src/db/plants.js` (read), `src/db/supabase-catalog.js`
+  (write), `src/storage/supabase-images.js`, `supabase/migrations/`,
+  `scripts/qa/*.js`, `tests/*.test.js`, `tests/e2e/`.
+
+### Hosting и deploy пътища
+
+| Път | Тригер | Какво публикува |
+|---|---|---|
+| Vercel проект `digital-flora-googleai` (framework `express`, Node 24.x) | push към `refactor/catalog-foundation` | **Production** (последен READY production deploy: `da85adc` от `refactor/catalog-foundation`) |
+| Vercel preview | push към друг branch / PR | Preview (Vercel Deployment Protection е включен) |
+| GitHub Pages (`.github/workflows/static.yml`) | push към `main` (т.е. всеки merge) | Само статичен frontend, без backend — legacy; не го бъркай с Vercel |
+
+`refactor/catalog-foundation` се синхронизира от `main` **само** при изрично одобрен
+deploy (fast-forward/merge commit с tree == `main`, без force-push). Смяната на
+Vercel Production Branch към `main` е отделна hosting промяна (§4.4).
+
+### Известни рискове (към 2026-09-23 — провери отново)
+
+- `main` **не е защитен** в GitHub (branch protection е изключен). Локалната защита е
+  само `.claude/settings.json` + hook. Включването на protection е решение на собственика.
+- **Migration drift:** live проектът има `20260923125258_fix_rls_auth_initplan_plants`,
+  който липсва в `supabase/migrations/`. Не го прилагай и не го „пресъздавай“ наизуст —
+  експортът му в repo изисква точния SQL и одобрение.
+- Supabase security advisor: *Leaked Password Protection Disabled* (Auth настройка → §4.7).
+- `File_017.png` и `IMG_5512.jpg` в Storage са orphan снимки с недовършена/противоречива
+  ботаническа проверка (`data/review-results.json` срещу `.bak`, `full_qa.md`,
+  `fix_log.txt`). Не ги трий/презаписвай; не пускай `scripts/bulk-import-orphan-photos.js`
+  без изрично одобрение — създава дублирани записи.
+
+## 3. Команди (проверени спрямо `package.json` и `quality.yml`)
+
+```bash
+npm ci                                   # точни dependencies от lockfile
+npm run dev                              # node server.js, PORT (default 3000); нужен е локален .env
+npm run lint                             # scripts/qa/check-syntax.js — node --check на tracked JS
+npm test                                 # node --test tests/*.test.js
+npm run build                            # no-op (няма build стъпка)
+node scripts/qa/validate-plant-data.js   # read-only; 0 локални записа е нормално (каталогът е в Supabase)
+node --test tests/plant-data-validation.test.js
+node scripts/qa/scan-secrets.js
+npm run test:e2e                         # Playwright; виж SKILL.md за cloud-container бележки
 ```
- 
-Ключови пътища за проверка (не приемай съдържанието им на доверие — винаги чети реалния код):
- 
+
+CI (`.github/workflows/quality.yml`): lint → test → validator → validator test → secret
+scan; пуска се на всеки pull request и на push към `main` и `refactor/catalog-foundation`.
+Skill `pre-merge-verify` изпълнява същите проверки локално.
+
+## 4. Твърди граници (never без изрично одобрение на конкретния обхват)
+
 ```text
-index.html                        — catalog UI, pagination, upload, editPlant(), runQA()
-server.js                         — REST endpoints за растения, QA, upload
-src/db/plants.js                  — Supabase read path
-src/db/supabase-catalog.js        — write paths
-src/storage/supabase-images.js    — Storage image behavior
-scripts/qa/validate-plant-data.js — read-only JSON validation
-tests/plant-data-validation.test.js
-tests/catalog-authorization.test.js
-tests/supabase-images.test.js
-```
- 
-`File_017.png` и `IMG_5512.jpg` в Storage НЕ са просто "неизползвани файлове" — те са orphan снимки с недовършена/противоречива ботаническа проверка (виж `data/review-results.json` срещу `.bak` версията с различна AI идентификация, `full_qa.md` с QA verdict "несъвпадение", `fix_log.txt` с прекъсната верификация заради изчерпан AI quota). Не ги трий, не ги презаписвай, не пускай `scripts/bulk-import-orphan-photos.js` без изрично одобрение — може да създаде дублирани записи. Преместването/почистването им е Supabase Storage операция и изисква Supabase достъп (в тази среда може да липсва authorization — провери).
- 
-Точен брой растения/снимки/orphan references и списъкът с отворени pull requests не са фиксирани тук — проверявай ги динамично на всяка сесия (§9), не разчитай на стар текст.
- 
-## 3. Приоритети
- 
-```text
-P0 — практическа използваемост: auth/login, add/edit на растения, upload и показване на снимки,
-     съответствие между preview/production и реалния Supabase източник, broken-image fallback, mobile usability.
-P1 — image foundation: original/optimized/thumbnail модел, provenance, "Подобри качество" бутон, targeted tests.
-P2 — ботанически data quality: GBIF autocomplete/cache, taxonomy provenance статуси,
-     Pl@ntNet opt-in идентификация, iNaturalist read-only контекст.
-P3 — само след стабилна основа: ограничен AI image-enhancement evaluation spike.
-```
- 
-Не смесвай приоритети в един commit. Едно техническо намерение = един малък, изолиран commit.
- 
-## 4. Твърди граници за безопасност (never без изрично одобрение)
- 
-```text
-1.  Никога не force-push-вай или не пренаписвай история на `main`. (`main` е
-    директен работен trunk по решение на потребителя от 2026-09-22 — виж §2/§6;
-    това НЕ отменя забраната за force-push/history rewrite тук, нито §4 т.2
-    за автономен merge на PR.)
-2.  Никога не merge-вай pull request.
+1.  Никога не commit-вай и не push-вай директно в `main`; никога force-push или
+    history rewrite на `main`. Промени влизат само през PR, merge-нат от собственика.
+2.  Никога не merge-вай pull request (и не включвай auto-merge).
 3.  Никога не force-push-вай, не пренаписвай история, не squash-вай споделени commits.
-4.  Никога не създавай production deployment и не променяй hosting/build/domain/
-    environment configuration (Vercel, Netlify или друга платформа).
+4.  Никога не създавай production/preview deployment и не променяй hosting/build/domain/
+    environment configuration (Vercel, GitHub Pages или друга платформа). Push към
+    `refactor/catalog-foundation` Е production deploy.
 5.  Никога не показвай, не commit-вай, не логвай и не искай съдържание на .env, API keys,
     tokens, passwords, cookies, database URLs, OAuth codes или Supabase service-role key.
 6.  Никога не поставяй server-side secret или service-role key в client/browser код.
@@ -91,118 +99,127 @@ P3 — само след стабилна основа: ограничен AI im
 8.  Никога не изпълнявай INSERT/UPDATE/DELETE/ALTER/DROP към production данни или
     storage write/delete без изрично одобрение и rollback план.
 9.  Никога не трий, презаписвай или трансформирай original image, plant record,
-    legacy файл, branch или cloud ресурс без изрично одобрение и trace-верификация преди изтриване.
-10. Никога не инсталирай нов package/dependency, не добавяй нов SaaS/API provider,
-    не създавай external account и не приемай terms без изрично одобрение.
+    legacy файл, remote branch или cloud ресурс без изрично одобрение и trace-верификация.
+10. Никога не инсталирай нов package/dependency, plugin, MCP server или CLI, не добавяй
+    SaaS/API provider, не създавай external account и не приемай terms без одобрение.
 11. Никога не променяй GitHub Actions workflows или CodeQL конфигурация без изрично одобрение.
 12. Никога не обработвай bulk legacy снимки и не викай платен/credit-consuming AI provider
-    извън изрично одобрен, ограничен evaluation spike.
+    (Gemini workflows, `/api/qa`) извън изрично одобрен, ограничен evaluation spike.
 13. Никога не представяй AI/API идентификация или таксономично предложение като
-    потвърден научен факт — винаги маркирай provenance (manual / source-suggested / editor-confirmed / needs-review).
+    потвърден научен факт — винаги маркирай provenance
+    (manual / source-suggested / editor-confirmed / needs-review).
 14. Никога не давай заключения за ядливост, токсичност или лечебна употреба
     само от снимка или AI резултат.
 ```
- 
-За всяко действие от този списък: спри и покажи точния план (файлове, diff/SQL/команди, тестове, rollback), преди да го изпълниш. Общ отговор като "давай" или "оправи всичко" не е достатъчен — изисквай конкретно потвърждение на конкретния обхват.
- 
+
+За всяко действие от списъка: спри и покажи точния план (файлове, diff/SQL/команди,
+тестове, rollback). Общо „давай“ или „оправи всичко“ не е одобрение.
+
+Техническа защита: `.claude/settings.json` (deny/ask правила) и
+`.claude/hooks/guard-bash.js` (блокира четене на `.env`/ключове, dump на environment,
+force-push, изтриване на remote branch и push към `main`). Не ги заобикаляй и не ги
+отслабвай без изрично одобрение.
+
 ## 5. Работен цикъл: план → QA → изпълнение → QA
- 
-Правило за автономност: извън 14-те граници в §4, не чакай потвърждение стъпка
-по стъпка. Питай потребителя само когато: (а) реално не можеш да провериш
-нещо сам от кода/git/API, (б) стъпката е от списъка в §4, или (в) изборът е
-продуктова преценка/вкус, не технически факт. Иначе продължавай директно към
-следващата безопасна стъпка.
- 
-За всяка нетривиална задача следвай точно тази последователност.
- 
-### A. План
-Направи кратък read-only inventory само на релевантните файлове и runtime paths. Формулирай най-малкия план, който решава реалния проблем. Не гадай schema, endpoint, dependency или data contract — провери в кода.
- 
-### B. QA на плана (преди всяко изпълнение)
-Провери плана срещу: обхват (няма ли ненужен refactor), data safety (риск за plants/images/originals), security (secrets/auth/RLS), backward compatibility (legacy photos/records), cost (credits, платени provider-и), testability (има ли конкретни acceptance checks), botanical integrity (риск от невярно твърдение). Коригирай плана преди да продължиш, ако откриеш проблем.
- 
-### C. Изпълнение
-Работи автономно през независимите read-only и низкорискови стъпки без прекъсване. Един логически проблем = един изолиран commit. Максимум 3 съществени опита за един defect с нова хипотеза всеки път; след трети неуспех — root-cause report и безопасен fallback. При липсващ достъп: `[BLOCKED: <точна причина>. Safe fallback: <следващо безопасно действие>.]` и продължи с независима работа.
- 
-### D. QA на изпълнението
-След всяка значима стъпка провери: diff обхват (само обещаното ли е променено), targeted tests, regression risk, data integrity (originals/legacy запазени), security (без secrets в diff/log), UX states (loading/success/failure/empty/unauthorized), botanical provenance коректност, rollback план. Не заобикаляй провален тест чрез изтриване или отслабване на assertion — докладвай root cause.
- 
-## 6. Git и commit дисциплина
- 
+
+Извън §4 работи автономно. Питай само когато: (а) не можеш да провериш нещо сам,
+(б) стъпката е от §4, (в) изборът е продуктова преценка.
+
+- **План:** read-only inventory на релевантните файлове; най-малкият план. Не гадай
+  schema, endpoint, dependency или data contract — провери в кода/connector-а.
+- **QA на плана:** обхват, data safety, security, backward compatibility (legacy
+  снимки/записи), cost, testability, botanical integrity.
+- **Изпълнение:** един логически проблем = един commit. Максимум 3 опита с нова
+  хипотеза за един defect; след това root-cause report. При липсващ достъп:
+  `[BLOCKED: <причина>. Safe fallback: <действие>.]` и продължи с независима работа.
+- **QA на изпълнението:** diff обхват, targeted tests, regression, data integrity,
+  security, UX states (loading/success/failure/empty/unauthorized), provenance, rollback.
+  Никога не отслабвай тест/assertion, за да мине.
+
+## 6. Git workflow
+
 ```text
-- Текущ работен branch: main (виж §2 — работен trunk без auto-deploy). За
-  по-рискови/експериментални промени — по преценка, отделен feature branch.
-- Никакъв force-push или пренаписване на история на main дори при директна
-  работа там (§4 т.1).
-- Един commit = една техническа цел; не смесвай data/schema, UI, image processing и QA.
-- Преди push: git diff --check, релевантни тестове (виж SKILL.md),
-  node scripts/qa/scan-secrets.js, git status --short. Главно на main няма
-  автоматичен CI gate (§2) — тази стъпка го компенсира ръчно.
-- Push само след изрично потвърждение за всеки push поотделно — не batch push.
-- Commit съобщение отразява точно какво е променено, не общо резюме.
+1. git fetch origin; нов branch от origin/main: <type>/<кратко-име>
+   (fix/, feat/, chore/, docs/, test/, refactor/; Claude cloud сесии — claude/…).
+2. Малки, фокусирани commits; conventional commit съобщения; stage по изричен път
+   (никога `git add .` / `git add -A`).
+3. Преди push: skill `pre-merge-verify` (или агент `qa-verifier`) — всичко PASSED.
+4. git push -u origin <branch> (никога main, никога --force).
+5. Draft PR към main с: обхват, файлове, data impact, validation, рискове, rollback.
+6. Merge прави само собственикът. Deploy = отделно одобрена синхронизация на
+   refactor/catalog-foundation (§2).
 ```
- 
-## 7. Тестова политика
- 
+
+Не смесвай data/schema, UI, image processing и QA в един commit.
+
+## 7. Definition of Done
+
+- [ ] Промяната е само в обещаните файлове; `git diff --check` е чист.
+- [ ] `npm run lint`, `npm test`, validator, validator test и `scan-secrets` — PASSED.
+- [ ] Targeted тест за променения behavior (нов или обновен), mock-нати външни API
+      (GBIF, Pl@ntNet, iNaturalist); никакви тестови данни в production Supabase.
+- [ ] Няма нови dependencies, secrets, schema/RLS/Storage или hosting промени без одобрение.
+- [ ] Legacy снимки/записи са запазени; ботаническите твърдения имат provenance.
+- [ ] Draft PR с validation резултати и точен rollback; CI е зелен.
+
+Минимални e2e цели: catalog load, search/filter, image fallback, editor form, invalid
+upload, valid upload preview, unauthorized write protection, mobile viewport.
+
+## 8. Supabase политика
+
+- Read-only discovery е свободно: `list_tables`, `list_migrations`, `get_advisors`,
+  `list_edge_functions`, `search_docs`, logs.
+- Проектният MCP сървър (`.mcp.json`, име `supabase`) е в `read_only=true` режим, само
+  с features `docs,database,debugging,development,functions`. Не добавяй втори
+  Supabase MCP сървър и не махай `read_only` без изрично одобрение.
+- `execute_sql` винаги пита (дори SELECT); всяка schema/RLS промяна минава през
+  `supabase/migrations/` файл + точен SQL + одобрение + verify
+  (skill `supabase-postgres-best-practices`; агент `supabase-security-reviewer` за review).
+- `apply_migration`, branch/project операции и `deploy_edge_function` са забранени в settings.
+
+## 9. Connectors и MCP
+
+- Използвай connectors проактивно за **read-only** проверка на live състояние
+  (GitHub PRs/CI/branches, Supabase metadata/advisors, Vercel deployments) вместо да
+  гадаеш от стари документи.
+- Write-capable remote tools (merge, deploy, env vars, domains, migrations, SQL writes,
+  branch delete) са забранени или изискват изрично одобрение — виж `.claude/settings.json`.
+- Никога не чети Vercel env values или токени през connector.
+- Ако connector не се свързва — `[BLOCKED: …]`, не заключавай, че ресурсът не съществува.
+
+## 10. Ботанически данни и provenance
+
+- AI/API резултатите са предложения: статус `needs-review` или `source-suggested`,
+  докато редактор не потвърди (`editor-confirmed`).
+- Научните имена се проверяват спрямо източник (GBIF), с отбелязан източник.
+- Несигурна идентификация се показва като несигурна. Без твърдения за ядливост,
+  токсичност или лечебна употреба без подкрепена идентификация и подходящ източник.
+- Виж `docs/BOTANICAL_POLICY.md` и `BOTANICAL_VERIFICATION.md`.
+
+## 11. Формат на отговор
+
+- **Справки/въпроси:** кратък директен отговор.
+- **Промени в код/данни/конфигурация:** 1) Извод 2) План 3) QA на плана 4) Изпълнение
+  (реални файлове, команди, резултати, commit-и) 5) QA на изпълнението (pass/fail/blocked)
+  6) Нужно действие от собственика (само реални approval gates) 7) Статус
+  (completed / partial / blocked / awaiting approval).
+- Финален отчет включва: Completed (файлове, SHA, тестове), Not changed, Blocked,
+  QA, Rollback и потвърждение: без push/force-push към main, без merge, без deploy,
+  без неодобрени schema/RLS/Storage/data writes, без изложени secrets, без AI резултат
+  представен като потвърден факт.
+
+## 12. Начало на всяка сесия
+
+Изпълни skill `audit-readonly`: branch/статус, отворени PR (`state=all`, flag-ни
+остарели/дублирани и припокриващи се), CI, Supabase migration drift и advisors,
+Vercel production SHA спрямо `main`. Върни кратък baseline и продължи по най-високия
+безопасен приоритет:
+
 ```text
-- След малка промяна: пусни само релевантния targeted test.
-- Преди PR proposal или край на фаза: пусни целия релевантен test suite веднъж.
-- Mock-вай GBIF, Pl@ntNet и iNaturalist в стандартни CI/local test runs.
-- Никога не пиши тестови данни в production Supabase записи.
-- Минимални e2e цели: catalog load, search/filter, image fallback, editor form,
-  invalid upload, valid upload preview, unauthorized write protection, mobile viewport.
+P0 — auth/login, add/edit, upload и показване на снимки, preview/production ↔ Supabase
+     съответствие, broken-image fallback, mobile usability.
+P1 — image foundation: original/optimized/thumbnail, provenance, targeted tests.
+P2 — ботанически data quality: GBIF autocomplete/cache, taxonomy provenance,
+     Pl@ntNet opt-in, iNaturalist read-only контекст.
+P3 — само след стабилна основа: ограничен AI image-enhancement spike.
 ```
- 
-## 8. Формат на отговор
- 
-**Пълен формат** (7 точки) — само за задачи с реална промяна в код/данни/конфигурация или изпълнение:
- 
-```text
-1. Извод: 1-3 изречения за текущата реалност.
-2. План: кратки подредени стъпки.
-3. QA на плана: кратка таблица с рискове и корекции.
-4. Изпълнение: реални файлове, команди, resultати, commit-и — без измислени действия.
-5. QA на изпълнението: pass/fail/blocked по всяка acceptance проверка.
-6. Нужно е действие от теб: само ако наистина има Approval Gate или липсващ достъп.
-7. Статус: completed / partial / blocked / awaiting approval.
-```
- 
-**Кратък формат** — за въпроси, справки, обяснения без промяна в repo: директен отговор по същество, без изкуствено раздуване до 7 точки.
- 
-Финален отчет на фаза:
- 
-```text
-Status: completed / partial / blocked / awaiting approval
- 
-Completed:
-- [задача]: файлове, commit SHA, tests.
- 
-Not changed:
-- [съзнателно недокоснато].
- 
-Blocked / decision needed:
-- [точна зависимост].
- 
-QA:
-- Scope / Tests / Data integrity / Security / UX / Botanical integrity.
- 
-Rollback:
-- [точни commit-и/ресурси].
- 
-Guarantees:
-- no force-push/history rewrite on main; no autonomous PR merge; no production deployment or hosting config change;
-- no unapproved schema/RLS/Storage/data write; no original image overwritten/deleted;
-- no secrets exposed; no AI result represented as verified botanical fact.
-```
- 
-## 9. Начало на всяка сесия
- 
-В началото на всяка нова Claude Code сесия в този repo:
- 
-1. Прочети този файл изцяло.
-2. Провери git branch и статус (`git status`, `git log --oneline -8`) — не приемай предишна сесия за завършена без проверим commit.
-3. Провери отворените pull requests (GitHub API, `state=all`) — flag-ни очевидно остарели/дублиращи се (напр. сочещи към вече merge-нат branch), вместо да се трупат мълчаливо.
-4. Направи един компактен read-only readiness check (branch, dirty status, известни blockers).
-5. Върни кратък baseline: текущ branch, статус, известни рискове, следваща безопасна стъпка.
-6. Продължи автономно по най-високия безопасен приоритет — питай само при реална липса на информация, стъпка от §4, или избор, който изисква твоята преценка (§5).
- 

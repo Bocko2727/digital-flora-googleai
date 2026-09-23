@@ -15,3 +15,6 @@ blob-report/
 
 # Claude Code agent worktrees (local only)
 .claude/worktrees/
+
+# Claude Code personal overrides (never shared)
+.claude/settings.local.json

@@ -1377,6 +1377,16 @@
 
     // Display-only fallback for empty optional text fields. Never used for
     // values that are sent back to the API (see editPlant/savePlant).
+    // Human-readable labels for public.plants.taxonomy_status (provenance of
+    // the identification, CLAUDE.md §4.13).
+    const TAXONOMY_STATUS_LABELS = {
+      'manual-unverified': 'Ръчно въведено, непроверено',
+      'source-suggested': 'Предложено от източник',
+      'editor-confirmed': 'Потвърдено от редактор',
+      'needs-review': 'За преглед',
+    };
+    const taxonomyStatusLabel = (status) => TAXONOMY_STATUS_LABELS[status] || TAXONOMY_STATUS_LABELS['manual-unverified'];
+
     const shown = (value, fallback) => (typeof value === 'string' && value.trim()) ? value : fallback;
 
     // True when the record's botanical text comes from an AI analysis (single
@@ -1515,6 +1525,7 @@
             family: data.family || '',
             photos: Array.isArray(data.photos) ? data.photos : [data.photos || 'placeholder.jpg'],
             confidence: data.confidence || 'Вероятно',
+            taxonomyStatus: data.taxonomyStatus || 'manual-unverified',
             // Raw values ('' when empty): display fallbacks are applied only
             // in drawModal via shown(), so the editor never saves them back.
             recognition: data.recognition || '',
@@ -1743,7 +1754,8 @@
         recognition: record.visible_features || null,
         lookalikes: joinList(record.possible_lookalikes),
         risks: record.safety_note ? 'AI бележка (непроверена): ' + record.safety_note : null,
-        funFact: joinList(record.additional_photos_needed)
+        funFact: joinList(record.additional_photos_needed),
+        taxonomyStatus: 'needs-review'
       };
 
       const createRes = await fetch('/api/plants', {
@@ -1896,7 +1908,7 @@
 
         <div class="meta">
           <div><b>Семейство</b>${escapeHtml(p.family || 'Неизвестно')}</div>
-          <div><b>Статус</b>Наблюдаван образец</div>
+          <div><b>Статус на идентификацията</b>${escapeHtml(taxonomyStatusLabel(p.taxonomyStatus))}</div>
         </div>
 
         <h3>Разпознаване (диагностични белези)${aiMark}</h3>
@@ -1969,6 +1981,12 @@
         <div class="form-group">
           <label>Статус на сигурност</label>
           <input type="text" id="e_conf" value="${escapeHtml(p.confidence)}">
+        </div>
+        <div class="form-group">
+          <label for="e_tax">Статус на идентификацията</label>
+          <select id="e_tax">
+            ${Object.entries(TAXONOMY_STATUS_LABELS).map(([value, label]) => `<option value="${value}"${value === (p.taxonomyStatus || 'manual-unverified') ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+          </select>
         </div>
         <div class="form-group">
           <label>Разпознаване (диагностични белези)</label>
@@ -2068,6 +2086,7 @@
       const lname = document.getElementById('e_lname') ? document.getElementById('e_lname').value : '';
       const fam = document.getElementById('e_fam') ? document.getElementById('e_fam').value : '';
       const conf = document.getElementById('e_conf') ? document.getElementById('e_conf').value : '';
+      const tax = document.getElementById('e_tax') ? document.getElementById('e_tax').value : undefined;
       const rec = document.getElementById('e_rec') ? document.getElementById('e_rec').value : '';
       const hab = document.getElementById('e_hab') ? document.getElementById('e_hab').value : '';
       const look = document.getElementById('e_look') ? document.getElementById('e_look').value : '';
@@ -2081,6 +2100,7 @@
         latinName: lname,
         family: fam,
         confidence: conf,
+        ...(tax ? { taxonomyStatus: tax } : {}),
         recognition: rec,
         habitat: hab,
         lookalikes: look,

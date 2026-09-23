@@ -23,12 +23,15 @@ const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 
-// P1.1 (Ден 4 security hardening): script-src keeps 'unsafe-inline' for now
-// because index.html relies on 42+ inline onclick/onchange/oninput
-// attributes — CSP nonces only cover <script nonce> tags, not inline event
-// handler attributes, so a nonce-only policy would silently break every
-// button in the catalog. Migrating those handlers to addEventListener is
-// tracked as a separate, larger follow-up (not part of this commit).
+// P1.1 (Ден 4 security hardening), completed: script-src no longer allows
+// 'unsafe-inline'. index.html has no inline <script> blocks (they live in
+// same-origin /theme-init.js and /app.js) and no inline on*="" handler
+// attributes (app.js uses delegated addEventListener listeners keyed on
+// data-action / data-change-action / data-input-action, plus a
+// capture-phase 'error' listener for img[data-fallback]). script-src-attr
+// is 'none' so any reintroduced inline handler fails loudly in the console
+// instead of silently widening the policy. style-src keeps 'unsafe-inline'
+// because inline style="" attributes are still used (out of scope).
 // supabase-js is vendored locally (P2.3, vendor/supabase-js.umd.js) rather
 // than imported at runtime from esm.sh, so script-src does not need that
 // CDN origin. apis.google.com is the legacy Drive-picker loader (out of
@@ -39,12 +42,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://apis.google.com'],
-      // Helmet defaults script-src-attr to 'none', which blocks inline
-      // onclick/onchange/oninput attributes separately from script-src even
-      // with 'unsafe-inline' there — must be set explicitly or every button
-      // in the catalog breaks.
-      scriptSrcAttr: ["'unsafe-inline'"],
+      scriptSrc: ["'self'", 'https://apis.google.com'],
+      scriptSrcAttr: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
       connectSrc: ["'self'", 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
@@ -148,7 +147,10 @@ app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ limit: '8mb', extended: true }));
 
 
-const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js') };
+// /theme-init.js and /app.js are the former inline <script> blocks of
+// index.html, served as same-origin files so CSP script-src needs no
+// 'unsafe-inline'.
+const PUBLIC_ROOT_FILES = { '/manifest.json': path.join(__dirname, 'manifest.json'), '/icon.svg': path.join(__dirname, 'icon.svg'), '/sw.js': path.join(__dirname, 'sw.js'), '/theme-init.js': path.join(__dirname, 'theme-init.js'), '/app.js': path.join(__dirname, 'app.js') };
 app.get(Object.keys(PUBLIC_ROOT_FILES), staticAssetLimiter, (req, res) => { res.sendFile(PUBLIC_ROOT_FILES[req.path], { dotfiles: 'deny' }); });
 
 // P2.3: vendored @supabase/supabase-js UMD bundle (see vendor/supabase-js.umd.js

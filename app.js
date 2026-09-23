@@ -374,7 +374,23 @@ document.addEventListener('error', (e) => {
 
     // Display-only fallback for empty optional text fields. Never used for
     // values that are sent back to the API (see editPlant/savePlant).
+    // Human-readable labels for public.plants.taxonomy_status (provenance of
+    // the identification, CLAUDE.md §4.13).
+    const TAXONOMY_STATUS_LABELS = {
+      'manual-unverified': 'Ръчно въведено, непроверено',
+      'source-suggested': 'Предложено от източник',
+      'editor-confirmed': 'Потвърдено от редактор',
+      'needs-review': 'За преглед',
+    };
+    const taxonomyStatusLabel = (status) => TAXONOMY_STATUS_LABELS[status] || TAXONOMY_STATUS_LABELS['manual-unverified'];
+
     const shown = (value, fallback) => (typeof value === 'string' && value.trim()) ? value : fallback;
+
+    // True when the record's botanical text comes from an AI analysis (single
+    // upload "AI x%" or the AI-generated botanical archive) rather than from an
+    // editor. Such text is labelled as unverified (CLAUDE.md §4.13/§4.14).
+    const isAiSourced = (confidence) => /\bAI\b|архив|Vision/i.test(String(confidence || ''));
+    const AI_TEXT_MARK = '<span class="ai-text-mark" title="Текстът е генериран от AI и не е проверен от ботаник.">AI текст — непроверен</span>';
 
     // Badge helper
     const sc = s => (s && s.startsWith('Потвърдено')) ? 'badge' : (s && s.startsWith('Неопределимо')) ? 'badge unc' : 'badge prob';
@@ -506,6 +522,7 @@ document.addEventListener('error', (e) => {
             family: data.family || '',
             photos: Array.isArray(data.photos) ? data.photos : [data.photos || 'placeholder.jpg'],
             confidence: data.confidence || 'Вероятно',
+            taxonomyStatus: data.taxonomyStatus || 'manual-unverified',
             // Raw values ('' when empty): display fallbacks are applied only
             // in drawModal via shown(), so the editor never saves them back.
             recognition: data.recognition || '',
@@ -734,7 +751,8 @@ document.addEventListener('error', (e) => {
         recognition: record.visible_features || null,
         lookalikes: joinList(record.possible_lookalikes),
         risks: record.safety_note ? 'AI бележка (непроверена): ' + record.safety_note : null,
-        funFact: joinList(record.additional_photos_needed)
+        funFact: joinList(record.additional_photos_needed),
+        taxonomyStatus: 'needs-review'
       };
 
       const createRes = await fetch('/api/plants', {
@@ -859,6 +877,7 @@ document.addEventListener('error', (e) => {
       const viewEl = document.getElementById('view');
       if (!viewEl) return;
 
+      const aiMark = isAiSourced(p.confidence) ? AI_TEXT_MARK : '';
       viewEl.innerHTML = `
     <article class="layout">
       <div class="photo-column">
@@ -886,24 +905,24 @@ document.addEventListener('error', (e) => {
 
         <div class="meta">
           <div><b>Семейство</b>${escapeHtml(p.family || 'Неизвестно')}</div>
-          <div><b>Статус</b>Наблюдаван образец</div>
+          <div><b>Статус на идентификацията</b>${escapeHtml(taxonomyStatusLabel(p.taxonomyStatus))}</div>
         </div>
 
-        <h3>Разпознаване (диагностични белези)</h3>
+        <h3>Разпознаване (диагностични белези)${aiMark}</h3>
         <p>${escapeHtml(shown(p.recognition, 'Няма данни'))}</p>
         <p><b>Местообитание и разпространение:</b> ${escapeHtml(shown(p.habitat, 'Няма данни'))}</p>
         <p><b>Възможни двойници:</b> ${escapeHtml(shown(p.lookalikes, '-'))}</p>
 
-        <h3>Ползи и екологична роля</h3>
+        <h3>Ползи и екологична роля${aiMark}</h3>
         <p>${escapeHtml(shown(p.benefits, 'Няма данни'))}</p>
 
-        <h3>Вреди и рискове (токсичност)</h3>
+        <h3>Вреди и рискове (токсичност)${aiMark}</h3>
         <p>${escapeHtml(shown(p.risks, 'Няма данни — рисковете не са проверени.'))}</p>
 
-        <h3>Традиционни и съвременни употреби</h3>
+        <h3>Традиционни и съвременни употреби${aiMark}</h3>
         <p>${escapeHtml(shown(p.uses, 'Няма данни'))}</p>
 
-        <h3>Любопитен факт</h3>
+        <h3>Любопитен факт${aiMark}</h3>
         <p>${escapeHtml(shown(p.funFact, '-'))}</p>
 
         <div class="note">
@@ -959,6 +978,12 @@ document.addEventListener('error', (e) => {
         <div class="form-group">
           <label>Статус на сигурност</label>
           <input type="text" id="e_conf" value="${escapeHtml(p.confidence)}">
+        </div>
+        <div class="form-group">
+          <label for="e_tax">Статус на идентификацията</label>
+          <select id="e_tax">
+            ${Object.entries(TAXONOMY_STATUS_LABELS).map(([value, label]) => `<option value="${value}"${value === (p.taxonomyStatus || 'manual-unverified') ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+          </select>
         </div>
         <div class="form-group">
           <label>Разпознаване (диагностични белези)</label>
@@ -1058,6 +1083,7 @@ document.addEventListener('error', (e) => {
       const lname = document.getElementById('e_lname') ? document.getElementById('e_lname').value : '';
       const fam = document.getElementById('e_fam') ? document.getElementById('e_fam').value : '';
       const conf = document.getElementById('e_conf') ? document.getElementById('e_conf').value : '';
+      const tax = document.getElementById('e_tax') ? document.getElementById('e_tax').value : undefined;
       const rec = document.getElementById('e_rec') ? document.getElementById('e_rec').value : '';
       const hab = document.getElementById('e_hab') ? document.getElementById('e_hab').value : '';
       const look = document.getElementById('e_look') ? document.getElementById('e_look').value : '';
@@ -1071,6 +1097,7 @@ document.addEventListener('error', (e) => {
         latinName: lname,
         family: fam,
         confidence: conf,
+        ...(tax ? { taxonomyStatus: tax } : {}),
         recognition: rec,
         habitat: hab,
         lookalikes: look,
@@ -1238,9 +1265,14 @@ document.addEventListener('error', (e) => {
           console.warn('Service Worker registration skipped:', err);
         });
       });
+      // Reload only when an already-controlling worker is replaced (an update
+      // the user accepted). On a first visit sw.js calls clients.claim(),
+      // which also fires controllerchange; reloading then would throw away
+      // whatever the user was doing (search, an edit, an upload in progress).
+      const hadControllerAtLoad = Boolean(navigator.serviceWorker.controller);
       let reloadedForUpdate = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloadedForUpdate) return;
+        if (!hadControllerAtLoad || reloadedForUpdate) return;
         reloadedForUpdate = true;
         window.location.reload();
       });

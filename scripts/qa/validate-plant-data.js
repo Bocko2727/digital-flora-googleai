@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-const root=process.cwd(),statuses=new Set(['draft','review','published']),confidence=new Set(['confirmed','high_confidence','probable','genus_only','unidentified']),errors=[],records=[];
+// Optional root dir (argv[2] or PLANT_DATA_ROOT); records are read from <root>/data/published and <root>/data/drafts.
+const root=path.resolve(process.argv[2]||process.env.PLANT_DATA_ROOT||process.cwd()),statuses=new Set(['draft','review','published']),confidence=new Set(['confirmed','high_confidence','probable','genus_only','unidentified']),errors=[],records=[];
 const walk=d=>fs.existsSync(d)?fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>{const f=path.join(d,e.name);return e.isDirectory()?walk(f):[f]}):[];
 const add=(v,file)=>{if(Array.isArray(v))v.forEach(x=>add(x,file));else if(v&&typeof v==='object'&&('id'in v||'status'in v||'taxonomy'in v))records.push({v,file})};
 for(const file of ['data/published','data/drafts'].flatMap(d=>walk(path.join(root,d)).filter(f=>f.endsWith('.json')))){try{add(JSON.parse(fs.readFileSync(file,'utf8')),file)}catch(e){errors.push(`${file}: invalid JSON`)}}

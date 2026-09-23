@@ -165,7 +165,7 @@ export async function getSupabasePlants() {
   try {
     const { rows } = await supabasePool.query(
       `SELECT id, common_name, latin_name, family, photos, confidence, recognition,
-              habitat, lookalikes, benefits, risks, uses, fun_fact, author_email, created_at
+              habitat, lookalikes, benefits, risks, uses, fun_fact, author_email, taxonomy_status, created_at
        FROM public.plants
        ORDER BY created_at DESC`
     );
@@ -184,6 +184,7 @@ export async function getSupabasePlants() {
       uses: textOrEmpty(r.uses),
       funFact: textOrEmpty(r.fun_fact),
       authorEmail: r.author_email || '',
+      taxonomyStatus: r.taxonomy_status || 'manual-unverified',
       createdAt: r.created_at,
     }));
   } catch (error) {

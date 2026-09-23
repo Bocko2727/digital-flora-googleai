@@ -1,12 +1,9 @@
 name: Analyze herbarium review images
 
+# Manual only. This job spends Gemini API credits and commits to the branch,
+# so it must never run just because images were pushed (CLAUDE.md §4.12:
+# no credit-consuming AI calls outside an explicitly approved run).
 on:
-  push:
-    paths:
-      - 'images/review/**'
-      - 'scripts/analyze_review.py'
-      - 'scripts/stage_existing_review_images.py'
-      - '.github/workflows/gemini-review.yml'
   workflow_dispatch:
 
 permissions:

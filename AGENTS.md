@@ -4,19 +4,19 @@
 
 ## Стек на проекта (важно — не предполагай друго)
 
-- **Frontend:** чист HTML/CSS/JavaScript (`index.html`), без React/Vue/Next.js
+- **Frontend:** чист HTML/CSS/JavaScript (`index.html` + `app.js` като ES module, `theme-init.js`), без React/Vue/Next.js; CSP без `'unsafe-inline'` за script — без inline handlers
 - **Backend:** Node.js + **Express** (`server.js`) — истинска framework абстракция (routes, middleware chains: `helmet`, `express-rate-limit`, custom auth middleware), не "гол" `http` модул
 - **База данни / storage:** **Supabase** (Postgres + Auth + Storage) е установеният и единствен активен източник — виж `src/db/plants.js` (read), `src/db/supabase-catalog.js` (write), `src/storage/supabase-images.js` (Storage). Firebase/Firestore **не съществуват** в кода (`firebase-client.js`, `firestore.rules` са премахнати) — миграцията е приключена, не "в процес"
 - **PWA:** service worker (`sw.js`, network-first за HTML), `manifest.json`
 - **Помощни скриптове:** предимно Node (`scripts/check-write-role.js`, `scripts/qa/validate-plant-data.js`, `scripts/qa/scan-secrets.js`); също **два legacy Python скрипта** (`scripts/analyze_review.py`, `scripts/stage_existing_review_images.py`) за review-batch обработка на снимки — не пипай/разширявай без нужда, не са част от runtime пътя
 - **Тестове:** `node --test` (unit, `tests/*.test.js`) + Playwright (`tests/e2e/`, `npm run test:e2e`)
-- **Lint:** само `node --check server.js` (`npm run lint`) — няма ESLint/Prettier конфигурация в проекта, не добавяй такава без изрично одобрение (CLAUDE.md правило 10)
+- **Lint:** `npm run lint` → `scripts/qa/check-syntax.js` (само `node --check` на tracked JS) — няма ESLint/Prettier конфигурация в проекта, не добавяй такава без изрично одобрение (CLAUDE.md §4.10)
 
 Не предлагай автоматично React компоненти, Next.js структура, нови Python scaffolding скриптове или TypeScript конфигурации — не съответстват на този проект, освен ако изрично не е поискано мигриране на стека.
 
 ## Активни проектни контракти
 
-- Работен branch: `main` (работен trunk — виж CLAUDE.md §2/§6). `refactor/catalog-foundation` се синхронизира само за да тригне реален Vercel deploy (виж CLAUDE.md §2 за Production Branch нюанса).
+- Branch модел: feature branch от `main` → Draft PR към `main` → merge само от собственика (CLAUDE.md §6). `refactor/catalog-foundation` е Vercel Production Branch и се синхронизира от `main` само при изрично одобрен deploy (CLAUDE.md §2).
 - Пълните твърди граници, работен цикъл и приоритети са в `CLAUDE.md` в root-а на repo-то — той е меродавният документ за git/security/QA дисциплина. Този файл (`AGENTS.md`) описва само стека и конвенциите за код.
 
 ## Backend сигурност — чеклист преди merge
@@ -48,8 +48,7 @@
 ## Git workflow
 
 ```bash
-# Feature branch, ако не работиш директно в refactor/catalog-foundation
-git checkout -b fix/plant-data-cleanup
+git fetch origin && git checkout -b fix/plant-data-cleanup origin/main
 
 # Conventional commits
 git commit -m "fix(catalog): correct botanical name mismatch in editPlant()"
@@ -57,7 +56,7 @@ git commit -m "feat(qa): add validation step to validate-plant-data.js"
 git commit -m "docs: update AGENTS.md with current stack"
 ```
 
-Push само към `refactor/catalog-foundation` (или изрично одобрен feature branch от него), не към `main`. Едно commit = една техническа цел — не смесвай data/schema, UI, image processing и QA в един commit.
+Push само към собствения feature branch, после Draft PR към `main`. Никога директно към `main` или `refactor/catalog-foundation` (последното е production deploy). Едно commit = една техническа цел — не смесвай data/schema, UI, image processing и QA в един commit.
 
 ## UI/Design принципи (за index.html)
 
@@ -89,5 +88,6 @@ Copilot Pro получава само изолирани, добре огран�
 ## Как да ползвате този файл
 
 - **GitHub Copilot Pro:** автоматично прочита repository контекста при всяка възложена Issue/PR задача, включително този файл.
-- **Claude Code / Cursor:** root-level `AGENTS.md` се четe автоматично като контекст за проекта — но `CLAUDE.md` има приоритет при конфликт по git/security/QA дисциплина.
+- **Claude Code:** зарежда `CLAUDE.md`, който импортира този файл (`@AGENTS.md`); `CLAUDE.md` има приоритет при конфликт.
+- **Cursor / Codex и др.:** четат root-level `AGENTS.md` директно; git/security/QA правилата са в `CLAUDE.md`.
 - **Ръчно (Perplexity, ChatGPT и др.):** прикачи файла към разговора, когато искаш AI да следва тези конвенции.

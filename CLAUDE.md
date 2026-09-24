@@ -50,17 +50,16 @@ Browser UI (index.html + app.js, sw.js, theme-init.js; без framework)
 deploy (fast-forward/merge commit с tree == `main`, без force-push). Смяната на
 Vercel Production Branch към `main` е отделна hosting промяна (§4.4).
 
-### Известни рискове (към 2026-09-23 — провери отново)
+### Известни рискове (към 2026-09-24 — провери отново)
 
 - `main` **не е защитен** в GitHub (branch protection е изключен). Локалната защита е
   само `.claude/settings.json` + hook. Включването на protection е решение на собственика.
-- **RLS role scoping:** `20260923125258_fix_rls_auth_initplan_plants` (приложена remote,
-  експортирана в repo на 2026-09-24) пресъздаде write policies на `plants` без
-  `TO authenticated` → `roles = {public}`. Достъпът на практика е същият (за anon
-  `auth.uid()` е NULL). Поправката е подготвена в
-  `20260924070000_restore_authenticated_role_plants_write_policies.sql`, но прилагането
-  ѝ върху live базата изисква отделно, конкретно одобрение (§4.7) — провери
-  `list_migrations`, преди да приемеш, че е приложена.
+- **Migration history drift:** `20260924070000_restore_authenticated_role_plants_write_policies`
+  е приложена ръчно през SQL Editor на 2026-09-24 (`pg_policies` показва
+  `{authenticated}` за трите write policies на `plants`), но **липсва** в
+  `list_migrations`. Не я прилагай повторно; поправката на историята
+  (`supabase migration repair --status applied 20260924070000`) е remote write и е
+  решение на собственика (§4.7).
 - Supabase security advisor: *Leaked Password Protection Disabled*. Функцията изисква
   Pro план; организацията е на Free — остава WARN, докато планът не се смени.
 - `File_017.png` и `IMG_5512.jpg` в Storage са orphan снимки с недовършена/противоречива

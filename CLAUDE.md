@@ -54,10 +54,12 @@ Vercel Production Branch към `main` е отделна hosting промяна 
 
 - `main` **не е защитен** в GitHub (branch protection е изключен). Локалната защита е
   само `.claude/settings.json` + hook. Включването на protection е решение на собственика.
-- **Migration drift:** live проектът има `20260923125258_fix_rls_auth_initplan_plants`,
-  който липсва в `supabase/migrations/`. Не го прилагай и не го „пресъздавай“ наизуст —
-  експортът му в repo изисква точния SQL и одобрение.
-- Supabase security advisor: *Leaked Password Protection Disabled* (Auth настройка → §4.7).
+- **RLS role scoping:** `20260923125258_fix_rls_auth_initplan_plants` (приложена remote,
+  експортирана в repo на 2026-09-24) пресъздаде write policies на `plants` без
+  `TO authenticated` → `roles = {public}`. Достъпът на практика е същият (за anon
+  `auth.uid()` е NULL), но връщането на `TO authenticated` е отделна миграция с одобрение (§4.7).
+- Supabase security advisor: *Leaked Password Protection Disabled*. Функцията изисква
+  Pro план; организацията е на Free — остава WARN, докато планът не се смени.
 - `File_017.png` и `IMG_5512.jpg` в Storage са orphan снимки с недовършена/противоречива
   ботаническа проверка (`data/review-results.json` срещу `.bak`, `full_qa.md`,
   `fix_log.txt`). Не ги трий/презаписвай; не пускай `scripts/bulk-import-orphan-photos.js`

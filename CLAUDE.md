@@ -57,7 +57,10 @@ Vercel Production Branch към `main` е отделна hosting промяна 
 - **RLS role scoping:** `20260923125258_fix_rls_auth_initplan_plants` (приложена remote,
   експортирана в repo на 2026-09-24) пресъздаде write policies на `plants` без
   `TO authenticated` → `roles = {public}`. Достъпът на практика е същият (за anon
-  `auth.uid()` е NULL), но връщането на `TO authenticated` е отделна миграция с одобрение (§4.7).
+  `auth.uid()` е NULL). Поправката е подготвена в
+  `20260924070000_restore_authenticated_role_plants_write_policies.sql`, но прилагането
+  ѝ върху live базата изисква отделно, конкретно одобрение (§4.7) — провери
+  `list_migrations`, преди да приемеш, че е приложена.
 - Supabase security advisor: *Leaked Password Protection Disabled*. Функцията изисква
   Pro план; организацията е на Free — остава WARN, докато планът не се смени.
 - `File_017.png` и `IMG_5512.jpg` в Storage са orphan снимки с недовършена/противоречива

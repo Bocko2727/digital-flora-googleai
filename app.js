@@ -150,7 +150,7 @@ document.addEventListener('error', (e) => {
       const container = document.getElementById('authContainer');
       if (!container) return;
       if (window.currentUser) {
-        const emailLabel = (window.currentUser.email || 'потребител').replace(/</g, '');
+        const emailLabel = escapeHtml(window.currentUser.email || 'потребител');
         const roleLabel = window.currentProfileRole || 'viewer';
         container.innerHTML = `
       <div class="user-profile">
@@ -257,7 +257,14 @@ document.addEventListener('error', (e) => {
       }
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (error) {
-        if (errEl) { errEl.textContent = 'Грешка при вход: ' + error.message; errEl.style.display = 'block'; }
+        const message = /invalid login credentials|invalid email or password/i.test(error.message || '')
+          ? 'Невалиден имейл или парола.'
+          : /email not confirmed/i.test(error.message || '')
+            ? 'Потвърдете имейла си, преди да влезете.'
+            : /rate limit|too many requests/i.test(error.message || '')
+              ? 'Твърде много опити. Опитайте отново по-късно.'
+              : 'Входът временно не е достъпен. Опитайте отново по-късно.';
+        if (errEl) { errEl.textContent = message; errEl.style.display = 'block'; }
         return;
       }
       await applySession(data.session);
@@ -337,7 +344,7 @@ document.addEventListener('error', (e) => {
       localStorage.setItem('theme', newTheme);
     };
 
-    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
+    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е ��снование за консумация или самолечение.';
 
     window.allPlants = [];
     window.filteredPlants = [];
@@ -1020,7 +1027,7 @@ document.addEventListener('error', (e) => {
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 ��апази промените</button>
       </div>
     </article>
   `;

@@ -134,7 +134,7 @@ function isCatalogInputError(error) {
 function forwardCatalogMutationError(res, next, error) {
   if (isCatalogInputError(error)) {
     return res.status(400).json({
-      error: error.message,
+      error: 'Данните за растението са невалидни.',
       code: 'INVALID_PLANT_INPUT',
     });
   }
@@ -243,7 +243,9 @@ app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, require
 // they are restricted to catalog editors/admins, same as catalog writes.
 app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res) => {
   const { filename, claimedName, latinName } = req.body;
-  if (!filename) return res.status(400).json({ error: 'Липсва файл' });
+  if (typeof filename !== 'string' || !filename) return res.status(400).json({ error: 'Липсва файл', code: 'IMAGE_REQUIRED' });
+  const safeClaimedName = typeof claimedName === 'string' ? claimedName.trim().slice(0, 200) : '';
+  const safeLatinName = typeof latinName === 'string' ? latinName.trim().slice(0, 200) : '';
   let base64 = null;
   let mimeType = typeof filename === 'string' && filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
   const localPath = resolveSafeImagePath(filename);
@@ -252,8 +254,8 @@ app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePerm
   if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) {
     try { const parsed = parsePlantImageDataUri(filename); mimeType = parsed.mimeType; base64 = parsed.buffer.toString('base64'); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
   }
-  if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
-  const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${claimedName}" (${latinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
+  if (!base64) return res.status(404).json({ error: 'Снимката не е намере��а' });
+  const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${safeClaimedName}" (${safeLatinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
   try {
     let verdict = '';
     try {
@@ -263,7 +265,7 @@ app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePerm
       if (kiloApiKey) { console.log('Gemini QA failed, falling back to Kilo AI:', geminiErr.message); verdict = await generateWithKiloAI(prompt, base64, mimeType); } else { throw geminiErr; }
     }
     res.json({ verdict });
-  } catch (error) { console.error('QA Error:', error); res.status(500).json({ error: error.message || 'Грешка при AI верификацията.' }); }
+  } catch (error) { console.error('QA Error:', error); res.status(502).json({ error: 'AI верификацията временно не е достъпна.', code: 'AI_UNAVAILABLE' }); }
 });
 
 
@@ -293,7 +295,7 @@ app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWrite
     }
     aiData.analyzed_at = new Date().toISOString();
     res.json({ success: true, record: aiData, imageUrl: relativeUrl });
-  } catch (error) { console.error('Upload Error:', error); res.status(500).json({ error: error.message || 'Грешка при анализа на снимката.' }); }
+  } catch (error) { console.error('Upload Error:', error); res.status(502).json({ error: 'Анализът на снимката временно не е достъпен.', code: 'AI_UNAVAILABLE' }); }
 });
 
 

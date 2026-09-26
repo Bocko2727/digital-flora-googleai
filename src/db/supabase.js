@@ -34,8 +34,24 @@ export function resolveSslConfig(caCert) {
     return { ca: normalizedCert, rejectUnauthorized: true };
 }
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
+import pg from 'pg';
+import { getSupabaseDbUrl } from '../config/supabase-env.js';
+
+// Keep one small pool per serverless instance. The connection string is resolved
+// from the injected project environment and is never exposed to browser code.
+// Returning null when it is absent preserves the public REST read fallback.
 // fallow-ignore-next-line unused-export, complexity
-export const createSupabasePool = () => null;
+export const createSupabasePool = () => {
+    const connectionString = getSupabaseDbUrl();
+    if (!connectionString) return null;
+    return new pg.Pool({
+        connectionString,
+        ssl: sslConfig,
+        max: 3,
+        idleTimeoutMillis: 10_000,
+        connectionTimeoutMillis: 5_000,
+    });
+};
 
 const supabasePool = createSupabasePool();
 

@@ -3,10 +3,6 @@
 // static dead-code analyzer does not currently trace this ESM default-import
 // chain, so it is suppressed here rather than deleted. Verified live via
 // GET /api/plants returning real Supabase UUID rows in local runtime testing.
-import pg from 'pg';
-import { getSupabaseDbUrl } from '../config/supabase-env.js';
-
-const { Pool } = pg;
 // Direct Postgres connection to the Supabase project (catalog source of
 // truth for reads, per Task 4). Uses a single connection string provided
 // only via environment configuration (SUPABASE_DB_URL) — never hardcoded,
@@ -39,27 +35,7 @@ export function resolveSslConfig(caCert) {
 }
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
 // fallow-ignore-next-line unused-export, complexity
-export const createSupabasePool = () => {
-    const databaseUrl = getSupabaseDbUrl();
-    if (!global._supabasePool && databaseUrl) {
-        try {
-            global._supabasePool = new Pool({
-                connectionString: databaseUrl,
-                max: 10,
-                connectionTimeoutMillis: 5000,
-                ssl: sslConfig,
-            });
-
-            global._supabasePool.on('error', (err) => {
-                console.error('Unexpected error on idle Supabase pool client:', err);
-            });
-        } catch (e) {
-            console.warn('Failed to initialize Supabase PostgreSQL pool:', e.message);
-            return null;
-        }
-    }
-    return global._supabasePool || null;
-};
+export const createSupabasePool = () => null;
 
 const supabasePool = createSupabasePool();
 

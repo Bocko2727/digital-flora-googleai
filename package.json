@@ -4,7 +4,7 @@
   "description": "Дигитален ботанически хербарий и енциклопедия на флората",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node --env-file-if-exists=/vercel/share/.env.project server.js",
     "start": "node server.js",
     "build": "echo 'No build step required'",
     "lint": "node scripts/qa/check-syntax.js",

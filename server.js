@@ -11,8 +11,6 @@ import { authenticateCatalogActor, requireCatalogWritePermission } from './src/a
 import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
 
-
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
@@ -54,6 +52,8 @@ app.use(helmet({
 }));
 
 
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL;
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_ANON_KEY;
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
 const kiloApiKey = process.env.kilo_code || process.env.KILO_CODE || process.env.KILO_API_KEY || process.env.KILO_KEY;
 const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/api/gateway';
@@ -305,8 +305,8 @@ app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey,
 // service-role key or any other secret.
 app.get('/api/config', staticAssetLimiter, (req, res) => {
   res.json({
-    supabaseUrl: process.env.SUPABASE_URL || null,
-    supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || null,
+    supabaseUrl: supabaseUrl || null,
+    supabasePublishableKey: supabasePublishableKey || null,
   });
 });
 

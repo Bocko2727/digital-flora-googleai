@@ -55,7 +55,12 @@ self.addEventListener('fetch', (event) => {
   // Cache-first stays for static assets below (fine to serve stale-then-
   // revalidate for those; they're versioned by CACHE_NAME).
   const isNavigation = event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
-  if (isNavigation) {
+  // The app's own scripts (formerly inline in index.html) must stay in
+  // lock-step with the HTML shell, so they are network-first too instead of
+  // falling into the cache-first *.js branch below.
+  const requestPath = new URL(event.request.url).pathname;
+  const isAppScript = requestPath === '/app.js' || requestPath === '/theme-init.js';
+  if (isNavigation || isAppScript) {
     event.respondWith(
       fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
@@ -63,7 +68,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         }
         return networkResponse;
-      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
+      }).catch(() => caches.match(event.request).then((cached) => cached || (isAppScript ? Response.error() : caches.match('/'))))
     );
     return;
   }

@@ -1,0 +1,16 @@
+# Keep Vercel deployments small. Every retained deployment counts toward the
+# team's Function Storage quota, and the local image archive alone is ~260 MB.
+#
+# The images stay in git (the gemini-review workflow and scripts use them) and
+# in Supabase Storage. At runtime the UI loads every photo from Supabase
+# Storage (resolvePhotoUrl in index.html), and the server's missing-image
+# fallback returns a GitHub copy or an SVG placeholder, so nothing on Vercel
+# needs these files.
+images/review/
+images/herbarium/
+IMG_5763.jpg
+
+# Test and dev-only files, never used by the running app.
+tests/
+playwright.config.js
+review-preview.html

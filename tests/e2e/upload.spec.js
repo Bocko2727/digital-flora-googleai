@@ -52,11 +52,17 @@ test('upload: server rejects an invalid image with 400 INVALID_IMAGE, photo coun
     return route.continue();
   });
 
+  // Wait for the POST itself: the photo-count text below is already on screen
+  // before the upload starts, so it cannot prove the request was made.
+  const uploadRequest = page.waitForRequest(
+    (req) => req.url().includes('/api/plants/e2e-plant-1/photos') && req.method() === 'POST'
+  );
   await page.setInputFiles('#e_photo_input', {
     name: 'valid-but-rejected.jpg',
     mimeType: 'image/jpeg',
     buffer: TINY_JPEG_BUFFER,
   });
+  await uploadRequest;
 
   await expect(page.getByText(`Снимки (${plantsFixture[0].photos.length} качени)`)).toBeVisible();
   expect(writeRequestSeen).toBe(true);

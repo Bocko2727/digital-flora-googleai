@@ -1,0 +1,9 @@
+{
+  "id": "plant_invalid_genus_only_001",
+  "status": "published",
+  "taxonomy": {"bulgarian_name": "Невалиден пример", "scientific_name": "Examplea sp.", "family": "Exampleaceae", "rank": "genus"},
+  "identification": {"confidence": "genus_only", "visible_diagnostic_features": [], "possible_lookalikes": [], "uncertainty_note": "Fixture: published record with genus_only confidence must fail validation."},
+  "content": {"benefits": [], "risks": {"humans": [], "dogs": [], "cats": [], "livestock": []}, "uses": [], "interesting_fact": null},
+  "evidence": {"sources": [], "photos": [{"id": "external-test-image"}]},
+  "created_at": "2026-08-17T00:00:00.000Z", "updated_at": "2026-08-17T00:00:00.000Z"
+}

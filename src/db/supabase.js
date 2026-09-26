@@ -37,12 +37,30 @@ export function resolveSslConfig(caCert) {
     return { ca: normalizedCert, rejectUnauthorized: true };
 }
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
+const rawSupabaseDatabaseUrl = process.env.SUPABASE_DB_URL
+    || process.env.POSTGRES_URL_NON_POOLING
+    || process.env.POSTGRES_URL
+    || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_POSTGRES_URL_NON_POOLING
+    || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_POSTGRES_URL;
+function normalizeDatabaseUrl(value) {
+    if (!value) return null;
+    try {
+        const parsed = new URL(value);
+        // pg gives sslmode in the URL precedence over the explicit ssl object.
+        // Remove the provider-injected mode so resolveSslConfig controls TLS.
+        parsed.searchParams.delete('sslmode');
+        return parsed.toString();
+    } catch {
+        return value;
+    }
+}
+const supabaseDatabaseUrl = normalizeDatabaseUrl(rawSupabaseDatabaseUrl);
 // fallow-ignore-next-line unused-export, complexity
 export const createSupabasePool = () => {
-    if (!global._supabasePool && process.env.SUPABASE_DB_URL) {
+    if (!global._supabasePool && supabaseDatabaseUrl) {
         try {
             global._supabasePool = new Pool({
-                connectionString: process.env.SUPABASE_DB_URL,
+                connectionString: supabaseDatabaseUrl,
                 max: 10,
                 connectionTimeoutMillis: 5000,
                 ssl: sslConfig,

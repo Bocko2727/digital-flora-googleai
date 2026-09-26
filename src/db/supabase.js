@@ -4,8 +4,9 @@
 // chain, so it is suppressed here rather than deleted. Verified live via
 // GET /api/plants returning real Supabase UUID rows in local runtime testing.
 import pg from 'pg';
-const { Pool } = pg;
+import { getSupabaseDbUrl } from '../config/supabase-env.js';
 
+const { Pool } = pg;
 // Direct Postgres connection to the Supabase project (catalog source of
 // truth for reads, per Task 4). Uses a single connection string provided
 // only via environment configuration (SUPABASE_DB_URL) — never hardcoded,
@@ -39,10 +40,11 @@ export function resolveSslConfig(caCert) {
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
 // fallow-ignore-next-line unused-export, complexity
 export const createSupabasePool = () => {
-    if (!global._supabasePool && process.env.SUPABASE_DB_URL) {
+    const databaseUrl = getSupabaseDbUrl();
+    if (!global._supabasePool && databaseUrl) {
         try {
             global._supabasePool = new Pool({
-                connectionString: process.env.SUPABASE_DB_URL,
+                connectionString: databaseUrl,
                 max: 10,
                 connectionTimeoutMillis: 5000,
                 ssl: sslConfig,

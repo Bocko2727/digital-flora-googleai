@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from '../config/supabase-env.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MIME_TO_EXTENSION = {
@@ -35,8 +36,8 @@ function assertSafePlantId(plantId) {
 }
 
 function storageConfig() {
-    const url = process.env.SUPABASE_URL;
-    const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const url = getSupabaseUrl();
+    const secretKey = getSupabaseServiceRoleKey();
     if (!url || !secretKey) throw new Error('Supabase Storage server configuration is unavailable.');
     return { url: url.replace(/\/$/, ''), secretKey };
 }

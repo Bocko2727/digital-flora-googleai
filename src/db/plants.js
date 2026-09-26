@@ -1,4 +1,5 @@
 import supabasePool from './supabase.js';
+import { getSupabasePublishableKey, getSupabaseUrl } from '../config/supabase-env.js';
 
 // ---------------------------------------------------------------------------
 // Supabase Postgres read path: the catalog source of truth for
@@ -107,8 +108,8 @@ const REST_TIMEOUT_MS = 5000;
 
 // fallow-ignore-next-line unused-export
 export async function getPlantsViaRest() {
-  const url = process.env.SUPABASE_URL;
-  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = getSupabaseUrl();
+  const publishableKey = getSupabasePublishableKey();
   if (!url || !publishableKey) {
     return null;
   }

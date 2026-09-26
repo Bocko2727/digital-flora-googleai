@@ -1,6 +1,10 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import fs from 'fs';
+
+dotenv.config({ path: '/vercel/share/.env.project' });
+dotenv.config();
 import express from 'express';
+import { getSupabasePublishableKey, getSupabaseUrl } from './src/config/supabase-env.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
@@ -305,8 +309,8 @@ app.get('/api/ai/status', (req, res) => { res.json({ geminiConfigured: !!apiKey,
 // service-role key or any other secret.
 app.get('/api/config', staticAssetLimiter, (req, res) => {
   res.json({
-    supabaseUrl: process.env.SUPABASE_URL || null,
-    supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || null,
+    supabaseUrl: getSupabaseUrl() || null,
+    supabasePublishableKey: getSupabasePublishableKey() || null,
   });
 });
 

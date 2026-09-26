@@ -389,9 +389,12 @@ app.get('/', staticAssetLimiter, (req, res) => { res.sendFile(path.join(__dirnam
 app.use((err, req, res, next) => { console.error('Unhandled Express error:', err); if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' }); });
 
 
-const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
+export default app;
 
+if (!process.env.VERCEL) {
+  const HOST = '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
 
-process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
-process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+  process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+  process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+}

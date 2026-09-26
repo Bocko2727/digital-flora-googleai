@@ -1,11 +1,12 @@
 
 import supabasePool from '../db/supabase.js';
+import { getSupabasePublishableKey, getSupabaseUrl } from '../config/supabase-env.js';
 
 const WRITABLE_ROLES = new Set(['editor', 'admin']);
 
 function getAuthConfig() {
-    const url = process.env.SUPABASE_URL;
-    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = getSupabaseUrl();
+  const publishableKey = getSupabasePublishableKey();
     if (!url || !publishableKey) return null;
     return { url: url.replace(/\/$/, ''), publishableKey };
 }

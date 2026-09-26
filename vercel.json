@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "server.js": {
-      "includeFiles": "node_modules/pg/**"
+    "**/*.js": {
+      "includeFiles": "node_modules/{pg,pg-pool,pg-protocol,pg-types,pg-cloudflare,pgpass,split2,postgres-array,postgres-bytea,postgres-date,postgres-interval,xtend}/**"
     }
   }
 }

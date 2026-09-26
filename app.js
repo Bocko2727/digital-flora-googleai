@@ -49,6 +49,7 @@ const CLICK_ACTIONS = {
   'run-qa': () => window.runQA(),
   'draw-modal': () => window.drawModal(),
   'save-plant': (ev, el) => window.savePlant(el.dataset.plantId, ev),
+  'apply-gbif-candidate': (ev, el) => window.applyGbifCandidate(Number(el.dataset.index)),
 };
 const CHANGE_ACTIONS = {
   'upload-plant': (ev) => window.uploadPlant(ev),
@@ -58,6 +59,7 @@ const CHANGE_ACTIONS = {
 };
 const INPUT_ACTIONS = {
   'filter': () => window.onFilterChange(),
+  'gbif-latin-name': () => window.onGbifLatinNameInput(),
 };
 
 // Mirrors inline-handler bubbling: every ancestor with an action attribute
@@ -944,6 +946,7 @@ document.addEventListener('error', (e) => {
     // 1) editPlant renders the edit form (fixed Day 2 known bug: this used to
     //    be mislabeled as runQA).
     window.editPlant = async function () {
+      window._pendingGbifTaxonomy = null;
       const p = window.filteredPlants[n];
       const curPhoto = p.photos[photo] || '';
       const imgPath = resolvePhotoUrl(curPhoto);
@@ -969,7 +972,8 @@ document.addEventListener('error', (e) => {
         </div>
         <div class="form-group">
           <label>Латинско име</label>
-          <input type="text" id="e_lname" value="${escapeHtml(p.latinName)}">
+          <input type="text" id="e_lname" value="${escapeHtml(p.latinName)}" data-input-action="gbif-latin-name" autocomplete="off">
+          <div id="gbif-suggest" style="margin-top:6px; font-size:13px;"></div>
         </div>
         <div class="form-group">
           <label>Семейство</label>
@@ -1024,6 +1028,87 @@ document.addEventListener('error', (e) => {
       </div>
     </article>
   `;
+    };
+
+    // 1b) GBIF taxonomy autocomplete (P2.1 frontend). Suggestions only: a
+    // click fills #e_lname/#e_fam in the open edit form, nothing is sent to
+    // the server until the editor explicitly clicks "Запази промените"
+    // (savePlant), so a GBIF suggestion never silently overwrites a saved
+    // record. The debounce keeps GBIF's free-tier rate limit safe.
+    let gbifDebounceTimer = null;
+    let gbifRequestToken = 0;
+
+    function renderGbifStatus(message, isError) {
+      const el = document.getElementById('gbif-suggest');
+      if (el) el.innerHTML = `<span style="color:${isError ? '#b42318' : 'var(--muted)'};">${escapeHtml(message)}</span>`;
+    }
+
+    function renderGbifCandidates(candidates) {
+      const el = document.getElementById('gbif-suggest');
+      if (!el) return;
+      if (!candidates.length) { renderGbifStatus('Няма намерени видове в GBIF за тази заявка.', false); return; }
+      window._gbifCandidates = candidates;
+      el.innerHTML = `
+        <div style="color:var(--muted); margin-bottom:4px;">GBIF предложение — провери преди запазване:</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          ${candidates.map((c, i) => `
+            <button type="button" data-action="apply-gbif-candidate" data-index="${i}" style="background:var(--hover-bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer;">
+              ${escapeHtml(c.canonicalName || c.scientificName || '?')}${c.family ? ' · ' + escapeHtml(c.family) : ''}
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    window.applyGbifCandidate = function (index) {
+      const candidate = (window._gbifCandidates || [])[index];
+      if (!candidate) return;
+      const lnameEl = document.getElementById('e_lname');
+      const famEl = document.getElementById('e_fam');
+      const taxEl = document.getElementById('e_tax');
+      if (lnameEl) lnameEl.value = candidate.canonicalName || candidate.scientificName || lnameEl.value;
+      if (famEl && candidate.family) famEl.value = candidate.family;
+      if (taxEl) taxEl.value = 'source-suggested';
+      window._pendingGbifTaxonomy = {
+        key: candidate.taxonKey,
+        scientificName: candidate.scientificName || null,
+        canonicalName: candidate.canonicalName || null,
+        rank: candidate.rank || null,
+        status: candidate.status || null,
+        family: candidate.family || null,
+        kingdom: candidate.kingdom || null,
+        fetchedAt: new Date().toISOString(),
+      };
+      renderGbifStatus(`Приложено от GBIF (${candidate.status || 'без статус'}) — статус „Предложено от източник“, запази ръчно за потвърждение.`, false);
+    };
+
+    async function runGbifSearch(query) {
+      const requestToken = ++gbifRequestToken;
+      renderGbifStatus('Търсене в GBIF…', false);
+      try {
+        const res = await fetch(`/api/gbif/search?q=${encodeURIComponent(query)}`, { headers: authHeaders() });
+        if (requestToken !== gbifRequestToken) return; // a newer keystroke superseded this request
+        if (res.status === 401) { renderGbifStatus('Влез в профила си, за да ползваш GBIF търсене.', true); return; }
+        if (res.status === 429) {
+          const payload = await res.json().catch(() => ({}));
+          renderGbifStatus(`Твърде много заявки към GBIF, опитай пак след ${payload.retryAfterSeconds || 5}с.`, true);
+          return;
+        }
+        if (!res.ok) { renderGbifStatus('GBIF търсенето не е налично в момента.', true); return; }
+        const payload = await res.json();
+        if (requestToken !== gbifRequestToken) return;
+        renderGbifCandidates(Array.isArray(payload.candidates) ? payload.candidates : []);
+      } catch (err) {
+        if (requestToken === gbifRequestToken) renderGbifStatus('GBIF търсенето не е налично в момента.', true);
+      }
+    }
+
+    window.onGbifLatinNameInput = function () {
+      const value = document.getElementById('e_lname')?.value || '';
+      clearTimeout(gbifDebounceTimer);
+      const el = document.getElementById('gbif-suggest');
+      if (value.trim().length < 3) { if (el) el.innerHTML = ''; return; }
+      gbifDebounceTimer = setTimeout(() => runGbifSearch(value.trim()), 300);
     };
 
     // 2) runQA calls the real /api/qa backend endpoint and fills #qa-result
@@ -1098,6 +1183,7 @@ document.addEventListener('error', (e) => {
         family: fam,
         confidence: conf,
         ...(tax ? { taxonomyStatus: tax } : {}),
+        ...(window._pendingGbifTaxonomy ? { gbifTaxonomy: window._pendingGbifTaxonomy } : {}),
         recognition: rec,
         habitat: hab,
         lookalikes: look,
@@ -1117,6 +1203,7 @@ document.addEventListener('error', (e) => {
           const payload = await updateRes.json().catch(() => ({}));
           throw new Error(payload.error || 'Грешка при обновяване на растението.');
         }
+        window._pendingGbifTaxonomy = null;
 
         const p = window.filteredPlants[n];
         if (p) {

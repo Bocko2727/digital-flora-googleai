@@ -1,7 +1,9 @@
 import supabasePool from './supabase.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const FIELD_MAP = { commonName: 'common_name', latinName: 'latin_name', family: 'family', photos: 'photos', confidence: 'confidence', recognition: 'recognition', habitat: 'habitat', lookalikes: 'lookalikes', benefits: 'benefits', risks: 'risks', uses: 'uses', funFact: 'fun_fact', taxonomyStatus: 'taxonomy_status' };
+const FIELD_MAP = { commonName: 'common_name', latinName: 'latin_name', family: 'family', photos: 'photos', confidence: 'confidence', recognition: 'recognition', habitat: 'habitat', lookalikes: 'lookalikes', benefits: 'benefits', risks: 'risks', uses: 'uses', funFact: 'fun_fact', taxonomyStatus: 'taxonomy_status', gbifTaxonomy: 'gbif_taxonomy' };
+const GBIF_TAXONOMY_MAX_BYTES = 4096;
+const GBIF_TAXONOMY_ALLOWED_KEYS = new Set(['key', 'scientificName', 'canonicalName', 'rank', 'status', 'family', 'kingdom', 'fetchedAt']);
 
 function pool() { if (!supabasePool) throw new Error('Supabase database connection is unavailable.'); return supabasePool; }
 function requiredText(value, field) { if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} is required.`); return value.trim(); }
@@ -11,9 +13,28 @@ function normalizedPhotos(value) { if (value === undefined) return []; if (!Arra
 // CHECK-constrained in migration 20260921151658). CLAUDE.md §4.13.
 export const TAXONOMY_STATUSES = Object.freeze(['manual-unverified', 'source-suggested', 'editor-confirmed', 'needs-review']);
 export function normalizeTaxonomyStatus(value) { if (!TAXONOMY_STATUSES.includes(value)) throw new Error('Invalid taxonomy status.'); return value; }
+// GBIF suggestion snapshot (column public.plants.gbif_taxonomy, migration
+// 20260921151658). Stored only as evidence for the editor, never as a
+// verified fact (CLAUDE.md §4.13) - shape and size capped so a malformed or
+// oversized client payload cannot bloat the row.
+export function normalizeGbifTaxonomy(value) {
+    if (value === null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid gbif taxonomy payload.');
+    const entries = Object.entries(value).filter(([k]) => GBIF_TAXONOMY_ALLOWED_KEYS.has(k));
+    const normalized = Object.fromEntries(entries);
+    const json = JSON.stringify(normalized);
+    if (json.length > GBIF_TAXONOMY_MAX_BYTES) throw new Error('Invalid gbif taxonomy payload: too large.');
+    return normalized;
+}
 function assertUuid(id) { if (!UUID_RE.test(id)) throw new Error('Invalid plant id.'); }
-function updateValue(key, value) { if (key === 'photos') return JSON.stringify(normalizedPhotos(value)); if (key === 'commonName' || key === 'latinName') return requiredText(value, key); if (key === 'taxonomyStatus') return normalizeTaxonomyStatus(value); return optionalText(value); }
-function updateAssignment(key, index) { return key === 'photos' ? `${FIELD_MAP[key]} = $${index}::jsonb` : `${FIELD_MAP[key]} = $${index}`; }
+function updateValue(key, value) {
+    if (key === 'photos') return JSON.stringify(normalizedPhotos(value));
+    if (key === 'commonName' || key === 'latinName') return requiredText(value, key);
+    if (key === 'taxonomyStatus') return normalizeTaxonomyStatus(value);
+    if (key === 'gbifTaxonomy') return JSON.stringify(normalizeGbifTaxonomy(value));
+    return optionalText(value);
+}
+function updateAssignment(key, index) { return (key === 'photos' || key === 'gbifTaxonomy') ? `${FIELD_MAP[key]} = $${index}::jsonb` : `${FIELD_MAP[key]} = $${index}`; }
 
 export async function insertSupabasePlant(input, actor) {
     const values = [requiredText(input.commonName, 'commonName'), requiredText(input.latinName, 'latinName'), optionalText(input.family), JSON.stringify(normalizedPhotos(input.photos)), optionalText(input.confidence) || 'Вероятно', optionalText(input.recognition), optionalText(input.habitat), optionalText(input.lookalikes), optionalText(input.benefits), optionalText(input.risks), optionalText(input.uses), optionalText(input.funFact), actor.email, input.taxonomyStatus === undefined ? 'manual-unverified' : normalizeTaxonomyStatus(input.taxonomyStatus)];

@@ -129,7 +129,7 @@ const moderateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, standardHe
 const staticAssetLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки. Опитайте отново по-късно.' } });
 const gbifLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { error: 'Твърде много заявки към GBIF. Опитайте отново по-късно.' } });
 function isCatalogInputError(error) {
-  return /Invalid plant id|Invalid taxonomy status|required|photos must|No supported/.test(error.message);
+  return /Invalid plant id|Invalid taxonomy status|Invalid gbif taxonomy|required|photos must|No supported/.test(error.message);
 }
 
 

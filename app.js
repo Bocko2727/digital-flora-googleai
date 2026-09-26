@@ -115,7 +115,7 @@ document.addEventListener('error', (e) => {
       if (!rawPhoto) return '/icon.svg';
       if (rawPhoto.startsWith('data:image')) return rawPhoto;
       if (/^https?:\/\//i.test(rawPhoto)) return rawPhoto.includes('?') ? rawPhoto : rawPhoto + '?cb=1';
-      const storageBase = 'https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/';
+      const storageBase = window.supabaseStorageBaseUrl || '';
       const fileName = rawPhoto
         .replace(/^\/+/, '')
         .replace(/^images\/review\//, '')
@@ -197,6 +197,7 @@ document.addEventListener('error', (e) => {
         const configRes = await fetch('/api/config');
         if (!configRes.ok) throw new Error('Конфигурацията на Supabase не е достъпна.');
         const config = await configRes.json();
+        window.supabaseStorageBaseUrl = config.supabaseStorageBaseUrl || '';
         if (!config.supabaseUrl || !config.supabasePublishableKey) {
           console.warn('Supabase Auth не е конфигуриран на сървъра. Входът остава недостъпен.');
           return;
@@ -337,7 +338,7 @@ document.addEventListener('error', (e) => {
       localStorage.setItem('theme', newTheme);
     };
 
-    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
+    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е ��снование за консумация или самолечение.';
 
     window.allPlants = [];
     window.filteredPlants = [];
@@ -1020,7 +1021,7 @@ document.addEventListener('error', (e) => {
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 ��апази промените</button>
       </div>
     </article>
   `;

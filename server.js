@@ -15,6 +15,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL;
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_ANON_KEY;
+const supabaseOrigin = (() => {
+  try { return supabaseUrl ? new URL(supabaseUrl).origin : null; } catch { return null; }
+})();
 
 
 app.set('trust proxy', 1);
@@ -41,8 +46,8 @@ app.use(helmet({
       scriptSrc: ["'self'", 'https://apis.google.com'],
       scriptSrcAttr: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
-      connectSrc: ["'self'", 'https://sxuxtsbyqjaodyuqebux.supabase.co'],
+      imgSrc: ["'self'", 'data:', ...(supabaseOrigin ? [supabaseOrigin] : [])],
+      connectSrc: ["'self'", ...(supabaseOrigin ? [supabaseOrigin] : [])],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -52,8 +57,6 @@ app.use(helmet({
 }));
 
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL;
-const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_ANON_KEY;
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_API_KEY;
 const kiloApiKey = process.env.kilo_code || process.env.KILO_CODE || process.env.KILO_API_KEY || process.env.KILO_KEY;
 const kiloBaseUrl = process.env.KILO_BASE_URL || 'https://api.kilo.ai/api/gateway';
@@ -307,6 +310,7 @@ app.get('/api/config', staticAssetLimiter, (req, res) => {
   res.json({
     supabaseUrl: supabaseUrl || null,
     supabasePublishableKey: supabasePublishableKey || null,
+    supabaseStorageBaseUrl: supabaseUrl ? `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/plant-images/` : null,
   });
 });
 

@@ -53,37 +53,89 @@ function textOrEmpty(value) {
   return typeof value === 'string' ? value : '';
 }
 
-export async function getSupabasePlants() {
+const PLANT_COLUMNS = [
+  'id', 'common_name', 'latin_name', 'family', 'photos', 'confidence', 'recognition',
+  'habitat', 'lookalikes', 'benefits', 'risks', 'uses', 'fun_fact', 'author_email',
+  'taxonomy_status', 'created_at',
+];
+
+function mapPlantRow(r) {
+  return {
+    id: r.id,
+    commonName: r.common_name || 'Неопределено растение',
+    latinName: r.latin_name || 'Неопределен таксон',
+    family: textOrEmpty(r.family),
+    photos: Array.isArray(r.photos) && r.photos.length > 0 ? r.photos : ['placeholder.jpg'],
+    confidence: mapSupabaseConfidence(r.confidence),
+    recognition: textOrEmpty(r.recognition),
+    habitat: textOrEmpty(r.habitat),
+    lookalikes: textOrEmpty(r.lookalikes),
+    benefits: textOrEmpty(r.benefits),
+    risks: textOrEmpty(r.risks),
+    uses: textOrEmpty(r.uses),
+    funFact: textOrEmpty(r.fun_fact),
+    authorEmail: r.author_email || '',
+    taxonomyStatus: r.taxonomy_status || 'manual-unverified',
+    createdAt: r.created_at,
+  };
+}
+
+async function getPlantsViaPostgres() {
   if (!supabasePool) {
     return null;
   }
   try {
     const { rows } = await supabasePool.query(
-      `SELECT id, common_name, latin_name, family, photos, confidence, recognition,
-              habitat, lookalikes, benefits, risks, uses, fun_fact, author_email, taxonomy_status, created_at
+      `SELECT ${PLANT_COLUMNS.join(', ')}
        FROM public.plants
        ORDER BY created_at DESC`
     );
-    return rows.map((r) => ({
-      id: r.id,
-      commonName: r.common_name || 'Неопределено растение',
-      latinName: r.latin_name || 'Неопределен таксон',
-      family: textOrEmpty(r.family),
-      photos: Array.isArray(r.photos) && r.photos.length > 0 ? r.photos : ['placeholder.jpg'],
-      confidence: mapSupabaseConfidence(r.confidence),
-      recognition: textOrEmpty(r.recognition),
-      habitat: textOrEmpty(r.habitat),
-      lookalikes: textOrEmpty(r.lookalikes),
-      benefits: textOrEmpty(r.benefits),
-      risks: textOrEmpty(r.risks),
-      uses: textOrEmpty(r.uses),
-      funFact: textOrEmpty(r.fun_fact),
-      authorEmail: r.author_email || '',
-      taxonomyStatus: r.taxonomy_status || 'manual-unverified',
-      createdAt: r.created_at,
-    }));
+    return rows.map(mapPlantRow);
   } catch (error) {
     console.error('Supabase getPlants failed:', error.message);
     return null;
   }
+}
+
+// Read-only fallback through the Supabase Data API (PostgREST) with the
+// publishable key, i.e. as the anon role. The "Published catalog is publicly
+// readable" RLS policy grants SELECT on every row, so this returns the same
+// live catalog when the direct Postgres connection fails (for example a
+// stale password in SUPABASE_DB_URL), instead of the 80-item AI archive.
+// Writes still go through the Postgres pool only.
+const REST_TIMEOUT_MS = 5000;
+
+// fallow-ignore-next-line unused-export
+export async function getPlantsViaRest() {
+  const url = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !publishableKey) {
+    return null;
+  }
+  try {
+    const endpoint = `${url.replace(/\/$/, '')}/rest/v1/plants?select=${PLANT_COLUMNS.join(',')}&order=created_at.desc`;
+    const response = await fetch(endpoint, {
+      headers: { apikey: publishableKey, accept: 'application/json' },
+      signal: AbortSignal.timeout(REST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const rows = await response.json();
+    if (!Array.isArray(rows)) {
+      throw new Error('unexpected response shape');
+    }
+    return rows.map(mapPlantRow);
+  } catch (error) {
+    console.error('Supabase REST getPlants failed:', error.message);
+    return null;
+  }
+}
+
+export async function getSupabasePlants() {
+  const rows = await getPlantsViaPostgres();
+  if (rows && rows.length > 0) {
+    return rows;
+  }
+  return getPlantsViaRest();
 }

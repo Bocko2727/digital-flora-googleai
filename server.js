@@ -1,8 +1,4 @@
-import dotenv from 'dotenv';
 import fs from 'fs';
-
-dotenv.config({ path: '/vercel/share/.env.project' });
-dotenv.config();
 import express from 'express';
 import { getSupabasePublishableKey, getSupabaseUrl } from './src/config/supabase-env.js';
 import path from 'path';

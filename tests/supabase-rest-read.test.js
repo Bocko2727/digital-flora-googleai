@@ -86,9 +86,18 @@ test('returns null (archive fallback) when the Data API fails', async () => {
 });
 
 test('does not call the Data API without SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY', async () => {
-  delete process.env.SUPABASE_URL;
-  delete process.env.SUPABASE_PUBLISHABLE_KEY;
-  const calls = mockFetch(() => jsonResponse([]));
-  assert.equal(await getSupabasePlants(), null);
-  assert.equal(calls.length, 0);
+  const hiddenKeys = Object.keys(process.env).filter((key) =>
+    key === 'SUPABASE_URL' || key === 'SUPABASE_PUBLISHABLE_KEY' ||
+    key.endsWith('_SUPABASE_URL') || key.endsWith('_SUPABASE_PUBLISHABLE_KEY') ||
+    key.endsWith('_SUPABASE_ANON_KEY')
+  );
+  const hiddenValues = new Map(hiddenKeys.map((key) => [key, process.env[key]]));
+  hiddenKeys.forEach((key) => delete process.env[key]);
+  try {
+    const calls = mockFetch(() => jsonResponse([]));
+    assert.equal(await getSupabasePlants(), null);
+    assert.equal(calls.length, 0);
+  } finally {
+    for (const [key, value] of hiddenValues) process.env[key] = value;
+  }
 });

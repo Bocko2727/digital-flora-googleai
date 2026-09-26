@@ -34,8 +34,10 @@ export function resolveSslConfig(caCert) {
     return { ca: normalizedCert, rejectUnauthorized: true };
 }
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
-import pg from 'pg';
+import { createRequire } from 'node:module';
 import { getSupabaseDbUrl } from '../config/supabase-env.js';
+
+const require = createRequire(import.meta.url);
 
 // Keep one small pool per serverless instance. The connection string is resolved
 // from the injected project environment and is never exposed to browser code.
@@ -44,6 +46,15 @@ import { getSupabaseDbUrl } from '../config/supabase-env.js';
 export const createSupabasePool = () => {
     const connectionString = getSupabaseDbUrl();
     if (!connectionString) return null;
+
+    let pg;
+    try {
+        pg = require('pg');
+    } catch (error) {
+        console.warn('Supabase Postgres driver is unavailable; using the REST catalog fallback.', error.message);
+        return null;
+    }
+
     return new pg.Pool({
         connectionString,
         ssl: sslConfig,

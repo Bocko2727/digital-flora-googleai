@@ -15,8 +15,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEYSUPABASE_URL;
-const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEYSUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEYSUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL;
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_PUBLISHABLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_ANON_KEY;
 const supabaseOrigin = (() => {
   try { return supabaseUrl ? new URL(supabaseUrl).origin : null; } catch { return null; }
 })();

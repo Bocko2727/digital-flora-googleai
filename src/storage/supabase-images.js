@@ -35,8 +35,8 @@ function assertSafePlantId(plantId) {
 }
 
 function storageConfig() {
-    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEYSUPABASE_URL;
-    const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEY;
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_URL;
+    const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.sb_publishable_Sdl2sYCMBSeAeW7tEpudKQ_zg0WfdUA_SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !secretKey) throw new Error('Supabase Storage server configuration is unavailable.');
     return { url: url.replace(/\/$/, ''), secretKey };
 }

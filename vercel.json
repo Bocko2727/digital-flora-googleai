@@ -4,5 +4,13 @@
     "**/*.js": {
       "includeFiles": "node_modules/{pg,pg-pool,pg-protocol,pg-types,pg-cloudflare,pgpass,split2,postgres-array,postgres-bytea,postgres-date,postgres-interval,xtend}/**"
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "x-flora-vercel-json", "value": "active" }
+      ]
+    }
+  ]
 }

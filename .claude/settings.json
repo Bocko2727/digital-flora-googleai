@@ -263,7 +263,19 @@
       "mcp__Vercel__create_flag",
       "mcp__Vercel__update_flag",
       "mcp__Vercel__update_flag_segment",
-      "mcp__Vercel__update_flag_settings"
+      "mcp__Vercel__update_flag_settings",
+      "mcp__CircleCI",
+      "mcp__Figma",
+      "mcp__Jentic",
+      "mcp__Macaly_Cloud",
+      "mcp__Rams",
+      "mcp__Remote_Desktop_Commander",
+      "mcp__Sentry",
+      "mcp__Subtext",
+      "mcp__SystemAudit",
+      "mcp__TinyFish",
+      "mcp__v0",
+      "mcp__Xweather"
     ]
   },
   "hooks": {

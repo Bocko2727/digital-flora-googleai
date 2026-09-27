@@ -23,6 +23,8 @@ function updateValue(key, value) { if (key === 'photos') return normalizedPhotos
 function updateAssignment(key, index) { return key === 'photos' ? `${FIELD_MAP[key]} = $${index}::jsonb` : `${FIELD_MAP[key]} = $${index}`; }
 // pg receives jsonb as JSON text; the Data API takes the array itself.
 function pgValue(column, value) { return column === 'photos' ? JSON.stringify(value) : value; }
+// Data API rows; an empty body (e.g. a 204) counts as no rows instead of throwing.
+function rowsOf(result) { return Array.isArray(result) ? result : []; }
 
 export async function insertSupabasePlant(input, actor) {
     const row = {
@@ -47,7 +49,7 @@ export async function insertSupabasePlant(input, actor) {
             const { rows } = await pool.query(`insert into public.plants (common_name, latin_name, family, photos, confidence, recognition, habitat, lookalikes, benefits, risks, uses, fun_fact, author_email, taxonomy_status) values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`, values);
             return rows[0];
         },
-        async () => (await supabaseRest('plants?select=id', { method: 'POST', body: row, accessToken: actor.accessToken, prefer: RETURN_ROWS }))[0],
+        async () => rowsOf(await supabaseRest('plants?select=id', { method: 'POST', body: row, accessToken: actor.accessToken, prefer: RETURN_ROWS }))[0] || null,
     );
 }
 
@@ -67,7 +69,7 @@ export async function updateSupabasePlant(id, input, actor) {
         async () => {
             const body = Object.fromEntries(keys.map((key, index) => [FIELD_MAP[key], values[index]]));
             body.updated_at = new Date().toISOString();
-            const rows = await supabaseRest(`plants?id=eq.${id}&select=id`, { method: 'PATCH', body, accessToken: actor?.accessToken, prefer: RETURN_ROWS });
+            const rows = rowsOf(await supabaseRest(`plants?id=eq.${id}&select=id`, { method: 'PATCH', body, accessToken: actor?.accessToken, prefer: RETURN_ROWS }));
             return rows[0] || null;
         },
     );
@@ -80,7 +82,7 @@ export async function deleteSupabasePlant(id, actor) {
             const { rows } = await pool.query('delete from public.plants where id = $1 returning id', [id]);
             return rows[0] || null;
         },
-        async () => (await supabaseRest(`plants?id=eq.${id}&select=id`, { method: 'DELETE', accessToken: actor?.accessToken, prefer: RETURN_ROWS }))[0] || null,
+        async () => rowsOf(await supabaseRest(`plants?id=eq.${id}&select=id`, { method: 'DELETE', accessToken: actor?.accessToken, prefer: RETURN_ROWS }))[0] || null,
     );
 }
 
@@ -91,7 +93,7 @@ export async function supabasePlantExists(id, actor) {
             const { rows } = await pool.query('select 1 from public.plants where id = $1 limit 1', [id]);
             return rows.length > 0;
         },
-        async () => (await supabaseRest(`plants?id=eq.${id}&select=id&limit=1`, { accessToken: actor?.accessToken })).length > 0,
+        async () => rowsOf(await supabaseRest(`plants?id=eq.${id}&select=id&limit=1`, { accessToken: actor?.accessToken })).length > 0,
     );
 }
 
@@ -103,11 +105,11 @@ const PHOTO_APPEND_ATTEMPTS = 3;
 
 async function appendPhotoViaDataApi(id, photo, accessToken) {
     for (let attempt = 0; attempt < PHOTO_APPEND_ATTEMPTS; attempt += 1) {
-        const [current] = await supabaseRest(`plants?id=eq.${id}&select=photos,updated_at&limit=1`, { accessToken });
+        const [current] = rowsOf(await supabaseRest(`plants?id=eq.${id}&select=photos,updated_at&limit=1`, { accessToken }));
         if (!current) return null;
         const existing = Array.isArray(current.photos) ? current.photos : [];
         const photos = existing.filter((entry) => entry !== 'placeholder.jpg').concat(photo);
-        const [updated] = await supabaseRest(`plants?id=eq.${id}&updated_at=eq.${encodeURIComponent(current.updated_at)}&select=id,photos`, { method: 'PATCH', body: { photos, updated_at: new Date().toISOString() }, accessToken, prefer: RETURN_ROWS });
+        const [updated] = rowsOf(await supabaseRest(`plants?id=eq.${id}&updated_at=eq.${encodeURIComponent(current.updated_at)}&select=id,photos`, { method: 'PATCH', body: { photos, updated_at: new Date().toISOString() }, accessToken, prefer: RETURN_ROWS }));
         if (updated) return updated;
     }
     throw new Error('The plant kept changing while its photo list was being updated.');

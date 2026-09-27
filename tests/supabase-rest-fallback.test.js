@@ -167,3 +167,13 @@ test('input is validated before any request is sent', async () => {
   await assert.rejects(catalog.deleteSupabasePlant(`${PLANT_ID}&id=neq.x`, EDITOR), /Invalid plant id/);
   assert.equal(calls.length, 0);
 });
+
+test('an empty Data API body (204) is treated as no rows, not a crash', async () => {
+  serviceEnv();
+  mockFetch(() => new Response(null, { status: 204 }));
+  assert.equal(await catalog.insertSupabasePlant({ commonName: 'А', latinName: 'B' }, EDITOR), null);
+  assert.equal(await catalog.updateSupabasePlant(PLANT_ID, { commonName: 'Мак' }, EDITOR), null);
+  assert.equal(await catalog.deleteSupabasePlant(PLANT_ID, EDITOR), null);
+  assert.equal(await catalog.supabasePlantExists(PLANT_ID, EDITOR), false);
+  assert.equal(await catalog.appendSupabasePlantPhoto(PLANT_ID, 'https://example.supabase.co/a.jpg', EDITOR), null);
+});

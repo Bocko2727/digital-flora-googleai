@@ -344,7 +344,7 @@ document.addEventListener('error', (e) => {
       localStorage.setItem('theme', newTheme);
     };
 
-    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е ��снование за консумация или самолечение.';
+    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
 
     window.allPlants = [];
     window.filteredPlants = [];
@@ -1027,7 +1027,7 @@ document.addEventListener('error', (e) => {
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 ��апази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
       </div>
     </article>
   `;

@@ -254,7 +254,7 @@ app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePerm
   if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) {
     try { const parsed = parsePlantImageDataUri(filename); mimeType = parsed.mimeType; base64 = parsed.buffer.toString('base64'); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
   }
-  if (!base64) return res.status(404).json({ error: 'Снимката не е намере��а' });
+  if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
   const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${safeClaimedName}" (${safeLatinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
   try {
     let verdict = '';

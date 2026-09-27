@@ -34,10 +34,11 @@ export function resolveSslConfig(caCert) {
     return { ca: normalizedCert, rejectUnauthorized: true };
 }
 const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
-import { createRequire } from 'node:module';
+// A static import, so Vercel's dependency tracer always bundles pg (as in the
+// working PR #36 deployment). The earlier "pg is missing" crashes on Vercel
+// came from a skipped install step (fixed by vercel.json), not from pg.
+import pg from 'pg';
 import { getSupabaseDbUrl } from '../config/supabase-env.js';
-
-const require = createRequire(import.meta.url);
 
 // Keep one small pool per serverless instance. The connection string is resolved
 // from the injected project environment and is never exposed to browser code.
@@ -46,14 +47,6 @@ const require = createRequire(import.meta.url);
 export const createSupabasePool = () => {
     const connectionString = getSupabaseDbUrl();
     if (!connectionString) return null;
-
-    let pg;
-    try {
-        pg = require('pg');
-    } catch (error) {
-        console.warn('Supabase Postgres driver is unavailable; using the REST catalog fallback.', error.message);
-        return null;
-    }
 
     return new pg.Pool({
         connectionString,

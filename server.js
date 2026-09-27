@@ -391,9 +391,20 @@ app.get('/', staticAssetLimiter, (req, res) => { res.sendFile(path.join(__dirnam
 app.use((err, req, res, next) => { console.error('Unhandled Express error:', err); if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' }); });
 
 
-const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
+// Vercel imports this module and serves the default export as its function
+// handler; it must not open its own port there. `node server.js` (npm run
+// dev/start, the Playwright webServer) listens as before. Tests import the
+// app without starting a listener.
+export default app;
 
+function isDirectRun() {
+  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(__filename); } catch { return false; }
+}
 
-process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
-process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+if (!process.env.VERCEL && isDirectRun()) {
+  const HOST = '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
+
+  process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+  process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+}

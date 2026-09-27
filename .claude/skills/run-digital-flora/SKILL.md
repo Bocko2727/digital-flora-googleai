@@ -12,9 +12,15 @@ screenshots and exits non-zero on failure. Paths below are relative to the repo 
 
 ```bash
 npm ci                                  # exact lockfile; provides @playwright/test
-npx playwright install chromium         # ~115 MiB headless shell -> ~/.cache/ms-playwright
-sudo npx playwright install-deps chromium   # system libs (libatk etc.) via apt
 ```
+
+- **Claude Code cloud container:** Chromium is preinstalled at `/opt/pw-browsers/chromium`
+  (older than the revision the pinned Playwright expects). Never run `playwright install`;
+  pass the binary instead:
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium node .claude/skills/run-digital-flora/driver.mjs`.
+- **Codespaces / local:** `npx playwright install chromium` (~115 MiB headless shell) and, if
+  system libs are missing, `sudo npx playwright install-deps chromium`. Both need approval
+  (`npx` is an `ask` rule).
 
 ## Run (agent path)
 
@@ -46,6 +52,7 @@ Server log → `/tmp/flora.log`. **Open the PNGs and look at them** before claim
 | `--out <dir>` | screenshot directory (default `/tmp/flora-shots`) |
 | `--port <n>` | port for the server it starts (default 3100) |
 | `BASE_URL=...` env | drive an already-running server instead of starting one |
+| `CHROMIUM_PATH=...` env | launch this Chromium binary instead of Playwright's download |
 
 ### Server only (for curl / API work)
 
@@ -61,14 +68,15 @@ lsof -ti:3100 -sTCP:LISTEN | xargs -r kill      # stop
 ## Test
 
 ```bash
-npm test                                              # 28 pass
-env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY npm run test:e2e   # 46 pass, 4 screenshot specs fail (see Gotchas)
+npm test                                              # all pass
+env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY npm run test:e2e   # 4 screenshot specs fail by design (see Gotchas)
 ```
 
 ## Gotchas
 
 - **The Codespace has `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in its environment**
-  (Codespaces secrets), with no `.env` file. A bare `node server.js` inherits the
+  (Codespaces secrets), with no `.env` file. In the Claude Code cloud container they were
+  absent (checked 2026-09-27); the driver strips them in both cases. A bare `node server.js` inherits the
   **production service-role key**, so Storage writes would hit production. Always strip them
   (`env -u …`); the driver strips every Supabase/Gemini/Kilo variable itself. Check which are set
   by name only: `[ -n "${SUPABASE_URL+x}" ] && echo set`. Never print values.

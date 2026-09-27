@@ -56,6 +56,21 @@ export function withoutTlsParams(connectionString) {
     return url.toString();
 }
 
+// db.<ref>.supabase.co (direct connection and the dedicated pooler) resolves
+// only over IPv6 unless the project has the IPv4 add-on; Vercel functions
+// cannot reach it and fail with getaddrinfo ENOTFOUND. The shared Supavisor
+// pooler (aws-*.pooler.supabase.com) is reachable over IPv4.
+const DIRECT_DATABASE_HOST_RE = /^db\.[a-z0-9]+\.supabase\.co$/i;
+
+// fallow-ignore-next-line unused-export
+export function directHostWarning(connectionString, onVercel) {
+    if (!onVercel) return null;
+    let host;
+    try { host = new URL(connectionString).hostname; } catch { return null; }
+    if (!DIRECT_DATABASE_HOST_RE.test(host)) return null;
+    return `The Supabase database URL points at ${host}, which is IPv6-only and unreachable from Vercel. Use the Transaction pooler URI (aws-*.pooler.supabase.com:6543) from Supabase > Connect. Until then the Data API is used.`;
+}
+
 // Keep one small pool per serverless instance. The connection string is resolved
 // from the injected project environment and is never exposed to browser code.
 // Returning null when it is absent preserves the public REST read fallback.
@@ -63,6 +78,8 @@ export function withoutTlsParams(connectionString) {
 export const createSupabasePool = () => {
     const connectionString = getSupabaseDbUrl();
     if (!connectionString) return null;
+    const warning = directHostWarning(connectionString, Boolean(process.env.VERCEL));
+    if (warning) console.warn(warning);
 
     const pool = new pg.Pool({
         connectionString: withoutTlsParams(connectionString),

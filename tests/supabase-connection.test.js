@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // No pool in this process: only the pure helpers of src/db/supabase.js are tested.
 delete process.env.SUPABASE_DB_URL;
-const { isConnectionError, withoutTlsParams } = await import('../src/db/supabase.js');
+const { directHostWarning, isConnectionError, withoutTlsParams } = await import('../src/db/supabase.js');
 
 function errorWith(fields) {
   return Object.assign(new Error(fields.message || 'failure'), fields);
@@ -63,4 +63,15 @@ test('withoutTlsParams leaves other connection strings untouched', () => {
   const plain = 'postgresql://postgres.ref:placeholder@aws-0-eu-central-1.pooler.supabase.com:6543/postgres';
   assert.equal(withoutTlsParams(plain), plain);
   assert.equal(withoutTlsParams('not a url'), 'not a url');
+});
+
+test('on Vercel, a direct db.<ref>.supabase.co URL gets an actionable warning', () => {
+  const direct = 'postgresql://postgres:placeholder@db.sxuxtsbyqjaodyuqebux.supabase.co:5432/postgres';
+  const warning = directHostWarning(direct, true);
+  assert.match(warning, /db\.sxuxtsbyqjaodyuqebux\.supabase\.co/);
+  assert.match(warning, /pooler\.supabase\.com:6543/);
+  assert.equal(warning.includes('placeholder'), false, 'never echo the password');
+  assert.equal(directHostWarning(direct, false), null, 'local and CI runs can use the direct host');
+  assert.equal(directHostWarning('postgres://postgres.ref:placeholder@aws-0-eu-central-1.pooler.supabase.com:6543/postgres', true), null);
+  assert.equal(directHostWarning('not a url', true), null);
 });

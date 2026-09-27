@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // No pool in this process: only the pure helpers of src/db/supabase.js are tested.
 delete process.env.SUPABASE_DB_URL;
-const { directHostWarning, isConnectionError, withoutTlsParams } = await import('../src/db/supabase.js');
+const { directHostWarning, isConnectionError, sslOptionsFor, withoutTlsParams } = await import('../src/db/supabase.js');
 
 function errorWith(fields) {
   return Object.assign(new Error(fields.message || 'failure'), fields);
@@ -74,4 +74,21 @@ test('on Vercel, a direct db.<ref>.supabase.co URL gets an actionable warning', 
   assert.equal(directHostWarning(direct, false), null, 'local and CI runs can use the direct host');
   assert.equal(directHostWarning('postgres://postgres.ref:placeholder@aws-0-eu-central-1.pooler.supabase.com:6543/postgres', true), null);
   assert.equal(directHostWarning('not a url', true), null);
+});
+
+test('an explicit verify-full/verify-ca sslmode keeps certificate verification', () => {
+  const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----';
+  const base = 'postgres://postgres.ref:placeholder@aws-0-eu-central-1.pooler.supabase.com:6543/postgres';
+  assert.deepEqual(sslOptionsFor(`${base}?sslmode=verify-full`, undefined), { rejectUnauthorized: true });
+  assert.deepEqual(sslOptionsFor(`${base}?sslmode=verify-ca`, undefined), { rejectUnauthorized: true });
+  assert.deepEqual(sslOptionsFor(`${base}?sslmode=verify-full`, pem), { ca: pem, rejectUnauthorized: true });
+});
+
+test('require or no sslmode follows libpq: encrypted, verified once a CA is configured', () => {
+  const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----';
+  const base = 'postgres://postgres.ref:placeholder@aws-0-eu-central-1.pooler.supabase.com:6543/postgres';
+  assert.deepEqual(sslOptionsFor(`${base}?sslmode=require`, undefined), { rejectUnauthorized: false });
+  assert.deepEqual(sslOptionsFor(base, undefined), { rejectUnauthorized: false });
+  assert.deepEqual(sslOptionsFor(`${base}?sslmode=require`, pem), { ca: pem, rejectUnauthorized: true });
+  assert.deepEqual(sslOptionsFor('not a url', undefined), { rejectUnauthorized: false });
 });

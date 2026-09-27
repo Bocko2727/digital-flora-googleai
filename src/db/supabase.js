@@ -33,7 +33,6 @@ export function resolveSslConfig(caCert) {
     const normalizedCert = caCert.includes('\\n') ? caCert.replace(/\\n/g, '\n') : caCert;
     return { ca: normalizedCert, rejectUnauthorized: true };
 }
-const sslConfig = resolveSslConfig(process.env.SUPABASE_DB_CA_CERT);
 // A static import, so Vercel's dependency tracer always bundles pg (as in the
 // working PR #36 deployment). The earlier "pg is missing" crashes on Vercel
 // came from a skipped install step (fixed by vercel.json), not from pg.
@@ -43,8 +42,8 @@ import { getSupabaseDbUrl } from '../config/supabase-env.js';
 // TLS parameters in the connection string override the ssl option passed to
 // pg: with pg 8, the sslmode=require that the Supabase-Vercel integration puts
 // in POSTGRES_URL becomes verify-full against the system CAs, which rejects
-// Supabase's own CA and ignores SUPABASE_DB_CA_CERT. Dropping them leaves
-// resolveSslConfig() as the only source of TLS settings.
+// Supabase's own CA and ignores SUPABASE_DB_CA_CERT. They are dropped from the
+// string, and sslOptionsFor() turns the requested mode into the ssl option.
 const CONNECTION_STRING_TLS_PARAMS = ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat'];
 
 // fallow-ignore-next-line unused-export
@@ -54,6 +53,18 @@ export function withoutTlsParams(connectionString) {
     if (!CONNECTION_STRING_TLS_PARAMS.some((param) => url.searchParams.has(param))) return connectionString;
     CONNECTION_STRING_TLS_PARAMS.forEach((param) => url.searchParams.delete(param));
     return url.toString();
+}
+
+// An explicit sslmode=verify-full/verify-ca keeps certificate verification,
+// against the system CAs when SUPABASE_DB_CA_CERT is unset, so dropping the
+// parameter never weakens it. Other modes (the integration's "require")
+// follow libpq semantics: always encrypted, verified once a CA is configured.
+// fallow-ignore-next-line unused-export
+export function sslOptionsFor(connectionString, caCert) {
+    const ssl = resolveSslConfig(caCert);
+    let mode = null;
+    try { mode = new URL(connectionString).searchParams.get('sslmode'); } catch { /* not a URL: defaults apply */ }
+    return mode === 'verify-full' || mode === 'verify-ca' ? { ...ssl, rejectUnauthorized: true } : ssl;
 }
 
 // db.<ref>.supabase.co (direct connection and the dedicated pooler) resolves
@@ -83,7 +94,7 @@ export const createSupabasePool = () => {
 
     const pool = new pg.Pool({
         connectionString: withoutTlsParams(connectionString),
-        ssl: sslConfig,
+        ssl: sslOptionsFor(connectionString, process.env.SUPABASE_DB_CA_CERT),
         max: 3,
         idleTimeoutMillis: 10_000,
         connectionTimeoutMillis: 5_000,

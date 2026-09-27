@@ -3,7 +3,7 @@
 ## Repository and branch
 - Repository: Bocko2727/digital-flora-googleai
 - Work on your own feature branch (`copilot/...`) created from `main`, and open a Draft PR targeting `main`.
-- Never commit or push directly to `main` or `refactor/catalog-foundation` (pushing the latter is a Vercel production deploy).
+- Never commit or push directly to `main`: it is the Vercel production branch, so every merge into it is a production deploy.
 - Never merge a pull request, force-push, rewrite Git history, squash commits, or create a deployment.
 - `CLAUDE.md` is the authoritative policy (hard boundaries in §4); `AGENTS.md` describes the stack and conventions.
 

@@ -1,4 +1,4 @@
-import supabasePool from './supabase.js';
+import { getUsablePool, reportPoolFailure } from './supabase.js';
 import { getSupabasePublishableKey, getSupabaseUrl } from '../config/supabase-env.js';
 
 // ---------------------------------------------------------------------------
@@ -82,17 +82,19 @@ function mapPlantRow(r) {
 }
 
 async function getPlantsViaPostgres() {
-  if (!supabasePool) {
+  const pool = getUsablePool();
+  if (!pool) {
     return null;
   }
   try {
-    const { rows } = await supabasePool.query(
+    const { rows } = await pool.query(
       `SELECT ${PLANT_COLUMNS.join(', ')}
        FROM public.plants
        ORDER BY created_at DESC`
     );
     return rows.map(mapPlantRow);
   } catch (error) {
+    reportPoolFailure(error);
     console.error('Supabase getPlants failed:', error.message);
     return null;
   }
@@ -103,7 +105,7 @@ async function getPlantsViaPostgres() {
 // readable" RLS policy grants SELECT on every row, so this returns the same
 // live catalog when the direct Postgres connection fails (for example a
 // stale password in SUPABASE_DB_URL), instead of the 80-item AI archive.
-// Writes still go through the Postgres pool only.
+// Writes have their own Data API fallback in supabase-catalog.js.
 const REST_TIMEOUT_MS = 5000;
 
 // fallow-ignore-next-line unused-export

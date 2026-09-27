@@ -132,7 +132,15 @@ function isCatalogInputError(error) {
 
 
 function forwardCatalogMutationError(res, next, error) {
-  if (isCatalogInputError(error)) {
+  // Codes set by src/db/supabase-rest.js when a write went through the Data API.
+  if (error.code === 'CATALOG_DATABASE_UNAVAILABLE') {
+    console.error('Catalog write failed:', error.message);
+    return res.status(503).json({ error: 'Каталогът временно не е достъпен. Опитайте отново по-късно.', code: 'CATALOG_DATABASE_UNAVAILABLE' });
+  }
+  if (error.code === 'CATALOG_ACCESS_DENIED') {
+    return res.status(403).json({ error: 'Your catalog role does not permit this operation.', code: 'CATALOG_WRITE_FORBIDDEN' });
+  }
+  if (error.code === 'CATALOG_INVALID_INPUT' || isCatalogInputError(error)) {
     return res.status(400).json({
       error: 'Данните за растението са невалидни.',
       code: 'INVALID_PLANT_INPUT',
@@ -219,7 +227,7 @@ app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalo
 
 app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const plant = await updateSupabasePlant(req.params.id, req.body);
+    const plant = await updateSupabasePlant(req.params.id, req.body, req.catalogActor);
     if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
     return res.json({ success: true, plant });
   } catch (error) {
@@ -230,7 +238,7 @@ app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCat
 
 app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const plant = await deleteSupabasePlant(req.params.id);
+    const plant = await deleteSupabasePlant(req.params.id, req.catalogActor);
     if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
     return res.json({ success: true });
   } catch (error) {
@@ -332,7 +340,7 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
 
 
     let exists;
-    try { exists = await supabasePlantExists(req.params.id); } catch (dbError) {
+    try { exists = await supabasePlantExists(req.params.id, req.catalogActor); } catch (dbError) {
       if (/Invalid plant id/.test(dbError.message)) throw dbError;
       console.error('Photo upload: plant lookup failed:', dbError.message);
       return res.status(502).json({ error: 'Catalog database is temporarily unavailable.', code: 'DATABASE_UNAVAILABLE' });
@@ -342,7 +350,7 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
 
     const stored = await storePlantImage(req.params.id, image);
     let updatedPlant;
-    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl); } catch (dbError) {
+    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl, req.catalogActor); } catch (dbError) {
       // The Storage object already exists; it is NOT deleted here (storage
       // deletes need explicit approval). Log the key so it can be traced.
       console.error('Photo upload: stored %s but could not attach it to plant %s: %s', stored.objectKey, req.params.id, dbError.message);

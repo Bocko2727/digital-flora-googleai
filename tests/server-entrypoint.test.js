@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
+// Keeps this process away from any real Supabase project: without these
+// settings the server uses only the local archive.
+import './support/isolated-supabase-env.js';
 
-// Keep this process away from any real Supabase project: without these the
-// server uses only the local archive and never opens a network connection.
-for (const name of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_DB_URL']) delete process.env[name];
 delete process.env.VERCEL;
 
 const { default: app } = await import('../server.js');

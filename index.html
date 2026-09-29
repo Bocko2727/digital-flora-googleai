@@ -907,6 +907,10 @@
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
+      /* Without an explicit width the fixed box shrinks to half the viewport
+         (left: 50%), so a long message becomes a tall column on phones. */
+      width: max-content;
+      max-width: calc(100vw - 32px);
       background: var(--note-bg);
       color: var(--amber);
       padding: 12px 28px;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateWithModelFallback } from '../src/ai/gemini-fallback.js';
+import { generateWithModelFallback, uploadAiErrorResponse } from '../src/ai/gemini-fallback.js';
 
 // generateWithModelFallback retries the primary model on Gemini 503 "high
 // demand" errors and, only if that is exhausted, tries each fallback model
@@ -97,4 +97,20 @@ test('does not retry or fall back on non-overload errors such as a quota error',
     return error === quota;
   });
   assert.deepEqual(calls, [PRIMARY]);
+});
+
+test('upload response: an overload that survived every fallback is 503 AI_OVERLOADED', () => {
+  const { status, body } = uploadAiErrorResponse(overloaded());
+  assert.equal(status, 503);
+  assert.equal(body.code, 'AI_OVERLOADED');
+  assert.match(body.error, /ръчно/);
+});
+
+test('upload response: any other failure stays 502 AI_UNAVAILABLE', () => {
+  const quota = new Error('{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}');
+  for (const error of [quota, new SyntaxError('Unexpected token < in JSON'), new Error('API key should be set')]) {
+    const { status, body } = uploadAiErrorResponse(error);
+    assert.equal(status, 502);
+    assert.equal(body.code, 'AI_UNAVAILABLE');
+  }
 });

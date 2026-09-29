@@ -10,7 +10,7 @@ import { getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
-import { generateWithModelFallback } from './src/ai/gemini-fallback.js';
+import { generateWithModelFallback, uploadAiErrorResponse } from './src/ai/gemini-fallback.js';
 
 
 
@@ -284,7 +284,7 @@ app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWrite
     }
     aiData.analyzed_at = new Date().toISOString();
     res.json({ success: true, record: aiData, imageUrl: relativeUrl });
-  } catch (error) { console.error('Upload Error:', error); res.status(502).json({ error: 'Анализът на снимката временно не е достъпен.', code: 'AI_UNAVAILABLE' }); }
+  } catch (error) { console.error('Upload Error:', error); const { status, body } = uploadAiErrorResponse(error); res.status(status).json(body); }
 });
 
 

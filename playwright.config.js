@@ -11,6 +11,9 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'retain-on-failure',
+    // CHROMIUM_PATH launches a preinstalled browser instead of Playwright's own download
+    // (Claude Code cloud containers: /opt/pw-browsers/chromium).
+    ...(process.env.CHROMIUM_PATH && { launchOptions: { executablePath: process.env.CHROMIUM_PATH } }),
   },
   webServer: {
     command: 'node server.js',

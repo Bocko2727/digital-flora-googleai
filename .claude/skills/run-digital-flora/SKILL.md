@@ -20,7 +20,7 @@ npm ci                                  # exact lockfile; provides @playwright/t
   `CHROMIUM_PATH=/opt/pw-browsers/chromium node .claude/skills/run-digital-flora/driver.mjs`.
 - **Codespaces / local:** `npx playwright install chromium` (~115 MiB headless shell) and, if
   system libs are missing, `sudo npx playwright install-deps chromium`. Both need approval
-  (`npx` is an `ask` rule).
+  (`npx` and `sudo` are `ask` rules).
 
 ## Run (agent path)
 
@@ -69,8 +69,15 @@ lsof -ti:3100 -sTCP:LISTEN | xargs -r kill      # stop
 
 ```bash
 npm test                                              # all pass
-env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY npm run test:e2e   # 4 screenshot specs fail by design (see Gotchas)
+# strip the same variables the driver strips; 4 screenshot specs fail by design (see Gotchas)
+env -u SUPABASE_URL -u SUPABASE_PUBLISHABLE_KEY -u SUPABASE_SERVICE_ROLE_KEY -u SUPABASE_DB_URL \
+  -u SUPABASE_DB_CA_CERT -u GEMINI_API_KEY -u GOOGLE_API_KEY -u GOOGLE_GENAI_API_KEY \
+  -u KILO_API_KEY -u KILO_KEY -u KILO_CODE -u KILO_BASE_URL -u KILO_MODEL \
+  npm run test:e2e
 ```
+
+In the Claude Code cloud container prefix the e2e command with
+`CHROMIUM_PATH=/opt/pw-browsers/chromium` (`playwright.config.js` reads it too).
 
 ## Gotchas
 
@@ -88,7 +95,9 @@ env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY npm run test:e2e   # 4 screensh
   `https://sxuxtsbyqjaodyuqebux.supabase.co/storage/v1/object/public/plant-images/`, so images
   are real public GETs even in archive mode and need outbound network. One archive record
   (`Vitex agnus-castus`, `IMG_5521.jpg`) shows the `/icon.svg` fallback. That is expected and is
-  the "1 fallback" in the output.
+  the "1 fallback" in the output. **In the Claude Code cloud container** the network policy
+  blocks the Storage host (`ERR_TUNNEL_CONNECTION_FAILED`), so every card shows the fallback
+  (`0 loaded`). That is the environment, not a regression.
 - **Card images are `loading="lazy"`.** A screenshot right after the cards appear shows grey
   placeholders. The driver waits for `networkidle` first. On mobile, cards below the fold stay
   "pending" (expected).

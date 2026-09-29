@@ -20,6 +20,70 @@ const delegatedEvent = (e, el) => ({
   nativeEvent: e,
 });
 
+// Honour the OS "reduce motion" setting for programmatic scrolling (WCAG 2.3.3).
+const scrollBehavior = () =>
+  (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'auto' : 'smooth';
+
+// --- Accessible dialogs (WCAG 2.1.1, 2.4.3, 4.1.2) ---
+// The three overlays (#modal, #authPanel, #createPlantPanel) are dialogs:
+// opening one moves focus into it, makes the rest of the page inert, keeps
+// Tab inside it, and closing it returns focus to the control that opened it.
+const DIALOG_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const dialogStack = [];
+
+function setBackgroundInert(activeOverlay) {
+  for (const el of document.body.children) {
+    if (el.tagName === 'SCRIPT' || el.id === 'uploadStatus') continue;
+    el.inert = Boolean(activeOverlay) && el !== activeOverlay;
+  }
+}
+
+function openDialog(overlayId) {
+  const overlay = document.getElementById(overlayId);
+  if (!overlay) return;
+  const existing = dialogStack.findIndex((d) => d.overlay === overlay);
+  if (existing === -1) {
+    dialogStack.push({ overlay, returnFocus: document.activeElement });
+  }
+  overlay.classList.add('open');
+  setBackgroundInert(overlay);
+  const first = overlay.querySelector('.modal-content input, .modal-content select, .modal-content textarea') || overlay.querySelector('.close-btn');
+  if (first && !overlay.contains(document.activeElement)) first.focus();
+}
+
+function closeDialog(overlayId) {
+  const overlay = document.getElementById(overlayId);
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  const i = dialogStack.findIndex((d) => d.overlay === overlay);
+  const entry = i === -1 ? null : dialogStack.splice(i, 1)[0];
+  const top = dialogStack[dialogStack.length - 1];
+  setBackgroundInert(top ? top.overlay : null);
+  const target = entry && entry.returnFocus;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}
+
+document.addEventListener('keydown', (e) => {
+  const top = dialogStack[dialogStack.length - 1];
+  if (!top || e.key !== 'Tab') return;
+  const items = [...top.overlay.querySelectorAll(DIALOG_FOCUSABLE)].filter((el) => el.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
+// Keep keyboard focus clear of the sticky toolbar (WCAG 2.4.11).
+function syncScrollPadding() {
+  const controls = document.querySelector('.controls');
+  const sticky = controls && getComputedStyle(controls).position === 'sticky';
+  document.documentElement.style.scrollPaddingTop = sticky ? `${controls.offsetHeight + 8}px` : '';
+}
+window.addEventListener('resize', syncScrollPadding, { passive: true });
+window.addEventListener('DOMContentLoaded', syncScrollPadding);
+syncScrollPadding();
+
 const CLICK_ACTIONS = {
   'trigger-upload': () => window.triggerUpload(),
   'open-create-plant': () => window.openCreatePlantForm(),
@@ -27,7 +91,7 @@ const CLICK_ACTIONS = {
   'open-google-picker': () => window.openGooglePicker(),
   'toggle-theme': () => window.toggleTheme(),
   'toggle-auth-panel': () => window.toggleAuthPanel(),
-  'scroll-top': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+  'scroll-top': () => window.scrollTo({ top: 0, behavior: scrollBehavior() }),
   'page-prev': () => window.goToPage(window.currentPage - 1),
   'page-next': () => window.goToPage(window.currentPage + 1),
   'go-to-page': (ev, el) => window.goToPage(Number(el.dataset.page)),
@@ -42,7 +106,13 @@ const CLICK_ACTIONS = {
   'create-plant-overlay': (ev) => window.handleCreatePlantOverlayClick(ev),
   'close-create-plant': () => window.closeCreatePlantForm(),
   'submit-create-plant': (ev) => window.submitCreatePlant(ev),
-  'open-plant': (ev, el) => window.openPlant(Number(el.dataset.idx)),
+  'open-plant': (ev, el) => {
+    // Mouse clicks land on the card, not its button: move focus to the
+    // button first so closing the dialog returns focus to this card.
+    const opener = el.querySelector('.plant-card-open');
+    if (opener && document.activeElement !== opener) opener.focus({ preventScroll: true });
+    window.openPlant(Number(el.dataset.idx));
+  },
   'change-photo': (ev, el) => window.change(Number(el.dataset.delta)),
   'edit-plant': () => window.editPlant(),
   'delete-plant': (ev, el) => window.deletePlant(el.dataset.plantId),
@@ -161,18 +231,16 @@ document.addEventListener('error', (e) => {
       </div>
     `;
       } else {
-        container.innerHTML = '<button class="auth-btn" id="authToggleBtn" data-action="toggle-auth-panel">🔐 Вход</button>';
+        container.innerHTML = '<button class="auth-btn" id="authToggleBtn" data-action="toggle-auth-panel"><span aria-hidden="true">🔐</span> Вход<span class="sr-only"> за редактори</span></button>';
       }
       setWriteUiVisible(roleCanWrite(window.currentProfileRole));
     }
 
     window.toggleAuthPanel = function () {
-      const panel = document.getElementById('authPanel');
-      if (panel) panel.classList.add('open');
+      openDialog('authPanel');
     };
     window.closeAuthPanel = function () {
-      const panel = document.getElementById('authPanel');
-      if (panel) panel.classList.remove('open');
+      closeDialog('authPanel');
       const err = document.getElementById('authError');
       if (err) err.style.display = 'none';
     };
@@ -286,12 +354,10 @@ document.addEventListener('error', (e) => {
       });
       const err = document.getElementById('createPlantError');
       if (err) err.style.display = 'none';
-      const panel = document.getElementById('createPlantPanel');
-      if (panel) panel.classList.add('open');
+      openDialog('createPlantPanel');
     };
     window.closeCreatePlantForm = function () {
-      const panel = document.getElementById('createPlantPanel');
-      if (panel) panel.classList.remove('open');
+      closeDialog('createPlantPanel');
     };
     window.handleCreatePlantOverlayClick = function (event) {
       if (event && event.target && event.target.id === 'createPlantPanel') closeCreatePlantForm();
@@ -459,6 +525,7 @@ document.addEventListener('error', (e) => {
       try { localStorage.setItem('gridView', mode); } catch (e) { }
       document.querySelectorAll('#viewToggle button').forEach((b) => {
         b.classList.toggle('active', b.dataset.view === mode);
+        b.setAttribute('aria-pressed', String(b.dataset.view === mode));
       });
     };
 
@@ -486,7 +553,7 @@ document.addEventListener('error', (e) => {
         const localIdx = idx - (targetPage - 1) * window.pageSize;
         const cards = document.querySelectorAll('.plant-card');
         const target = cards[localIdx];
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (target) target.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       });
     };
 
@@ -572,7 +639,7 @@ document.addEventListener('error', (e) => {
             grid.innerHTML = `
           <div style="text-align:center;grid-column:1/-1;padding:40px;color:var(--muted)">
             <p>Възникна временна пауза при свързване със сървъра.</p>
-            <button data-action="reload" style="background:var(--green);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
+            <button data-action="reload" style="background:var(--green-fill);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">Презареди</button>
           </div>
         `;
           }
@@ -638,7 +705,7 @@ document.addEventListener('error', (e) => {
       for (let i = startP; i <= endP; i++) pages.push(i);
 
       numbersEl.innerHTML = pages.map((p) =>
-        `<button class="page-num${p === cur ? ' active' : ''}" data-action="go-to-page" data-page="${p}">${p}</button>`
+        `<button class="page-num${p === cur ? ' active' : ''}" data-action="go-to-page" data-page="${p}"${p === cur ? ' aria-current="page"' : ''} aria-label="Страница ${p}">${p}</button>`
       ).join('');
     }
 
@@ -648,7 +715,7 @@ document.addEventListener('error', (e) => {
       window.currentPage = page;
       renderCurrentPage();
       const mainEl = document.querySelector('main');
-      if (mainEl) mainEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (mainEl) mainEl.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
     };
 
     function renderCurrentPage() {
@@ -662,7 +729,7 @@ document.addEventListener('error', (e) => {
       const counterText = document.getElementById('counterText');
 
       if (total === 0) {
-        grid.innerHTML = '<div style="text-align:center;grid-column:1/-1;padding:50px;color:var(--muted)">Няма намерени растения по тези критерии.</div>';
+        grid.innerHTML = '<div style="text-align:center;grid-column:1/-1;padding:50px;color:var(--muted)">Няма намерени растения с тези филтри. Изчисти филтрите или опитай с латинско име.</div>';
         if (counterText) counterText.innerText = `Показани 0 от 0 образеца`;
         renderPaginationControls(1);
         return;
@@ -678,11 +745,11 @@ document.addEventListener('error', (e) => {
 
         return `
       <div class="plant-card" data-action="open-plant" data-idx="${globalIdx}">
-        <img class="plant-card-img" src="${escapeHtml(imgPath)}" alt="${escapeHtml(p.commonName)}" loading="lazy" data-fallback="/icon.svg">
+        <img class="plant-card-img" src="${escapeHtml(imgPath)}" alt="" loading="lazy" data-fallback="/icon.svg">
         <div class="plant-card-content">
-          <h3 class="plant-card-title">${escapeHtml(p.commonName)}</h3>
-          <div class="plant-card-latin">${escapeHtml(p.latinName)}</div>
-          <div class="plant-card-meta">📁 ${escapeHtml(p.family || 'Непознато семейство')}</div>
+          <h3 class="plant-card-title"><button type="button" class="plant-card-open">${escapeHtml(p.commonName)}</button></h3>
+          <div class="plant-card-latin" lang="la">${escapeHtml(p.latinName)}</div>
+          <div class="plant-card-meta"><span aria-hidden="true">📁</span> ${escapeHtml(p.family || 'Непознато семейство')}</div>
           <div class="plant-card-footer">
             <span class="${sc(p.confidence)}">${escapeHtml((p.confidence || '').split('—')[0].trim())}</span>
           </div>
@@ -862,17 +929,20 @@ document.addEventListener('error', (e) => {
       n = idx;
       photo = 0;
       drawModal();
-      const modal = document.getElementById('modal');
-      if (modal) modal.classList.add('open');
+      openDialog('modal');
     };
 
     window.closeModal = function () {
-      const modal = document.getElementById('modal');
-      if (modal) modal.classList.remove('open');
+      closeDialog('modal');
     };
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key !== 'Escape') return;
+      const top = dialogStack[dialogStack.length - 1];
+      if (!top) return;
+      if (top.overlay.id === 'authPanel') closeAuthPanel();
+      else if (top.overlay.id === 'createPlantPanel') closeCreatePlantForm();
+      else closeModal();
     });
 
     window.change = function (d) {
@@ -908,14 +978,14 @@ document.addEventListener('error', (e) => {
         ` : ''}
       </div>
       <div class="info">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-          <h2>${escapeHtml(p.commonName)}</h2>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; padding-right:44px;">
+          <h2 id="plantDialogTitle">${escapeHtml(p.commonName)}</h2>
           <div style="display:flex; gap:8px;">
             <button data-action="edit-plant" style="background:var(--hover-bg); color:var(--ink); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Редакция">✏️ Редакция</button>
             <button data-action="delete-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--badge-unc-bg); color:var(--red); border:1px solid var(--line); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px;" title="Изтриване">🗑️ Изтрий</button>
           </div>
         </div>
-        <div class="latin">${escapeHtml(p.latinName)}</div>
+        <div class="latin" lang="la">${escapeHtml(p.latinName)}</div>
         <span class="${sc(p.confidence)}">${escapeHtml(p.confidence)}</span>
 
         <div class="meta">
@@ -949,7 +1019,7 @@ document.addEventListener('error', (e) => {
           <h3 style="margin:0 0 4px 0; color:var(--blue); font-size:15px;">🔍 Интерактивен QA Контрол</h3>
           <p style="font-size:13px; margin:0 0 10px 0; color:var(--muted);">Попитай AI ботаника дали снимката отговаря на името.</p>
           <button data-action="run-qa" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px;">Извърши AI верификация</button>
-          <div id="qa-result" style="margin-top:10px; font-weight:600; font-size:14px; white-space:pre-wrap;"></div>
+          <div id="qa-result" role="status" aria-live="polite" style="margin-top:10px; font-weight:600; font-size:14px; white-space:pre-wrap;"></div>
         </div>
       </div>
     </article>
@@ -974,24 +1044,24 @@ document.addEventListener('error', (e) => {
       </div>
       <div class="info">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-          <h2 style="margin:0;">Редакция на образец</h2>
+          <h2 id="plantDialogTitle" style="margin:0;">Редакция на образец</h2>
           <button data-action="draw-modal" style="background:#e0e7e1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Отказ</button>
         </div>
 
         <div class="form-group">
-          <label>Българско име</label>
+          <label for="e_cname">Българско име</label>
           <input type="text" id="e_cname" value="${escapeHtml(p.commonName)}">
         </div>
         <div class="form-group">
-          <label>Латинско име</label>
+          <label for="e_lname">Латинско име</label>
           <input type="text" id="e_lname" value="${escapeHtml(p.latinName)}">
         </div>
         <div class="form-group">
-          <label>Семейство</label>
+          <label for="e_fam">Семейство</label>
           <input type="text" id="e_fam" value="${escapeHtml(p.family)}">
         </div>
         <div class="form-group">
-          <label>Статус на сигурност</label>
+          <label for="e_conf">Статус на сигурност</label>
           <input type="text" id="e_conf" value="${escapeHtml(p.confidence)}">
         </div>
         <div class="form-group">
@@ -1001,41 +1071,41 @@ document.addEventListener('error', (e) => {
           </select>
         </div>
         <div class="form-group">
-          <label>Разпознаване (диагностични белези)</label>
+          <label for="e_rec">Разпознаване (диагностични белези)</label>
           <textarea id="e_rec" rows="3">${escapeHtml(p.recognition)}</textarea>
         </div>
         <div class="form-group">
-          <label>Местообитание и разпространение</label>
+          <label for="e_hab">Местообитание и разпространение</label>
           <textarea id="e_hab" rows="2">${escapeHtml(p.habitat)}</textarea>
         </div>
         <div class="form-group">
-          <label>Възможни двойници</label>
+          <label for="e_look">Възможни двойници</label>
           <input type="text" id="e_look" value="${escapeHtml(p.lookalikes)}">
         </div>
         <div class="form-group">
-          <label>Ползи / Екологична роля</label>
+          <label for="e_ben">Ползи / Екологична роля</label>
           <textarea id="e_ben" rows="2">${escapeHtml(p.benefits)}</textarea>
         </div>
         <div class="form-group">
-          <label>Вреди и рискове (токсичност)</label>
+          <label for="e_risk">Вреди и рискове (токсичност)</label>
           <textarea id="e_risk" rows="2">${escapeHtml(p.risks)}</textarea>
         </div>
         <div class="form-group">
-          <label>Употреби (традиционни/съвременни)</label>
+          <label for="e_use">Употреби (традиционни/съвременни)</label>
           <textarea id="e_use" rows="2">${escapeHtml(p.uses || '')}</textarea>
         </div>
         <div class="form-group">
-          <label>Любопитен факт</label>
+          <label for="e_fact">Любопитен факт</label>
           <textarea id="e_fact" rows="2">${escapeHtml(p.funFact)}</textarea>
         </div>
 
         <div class="form-group">
-          <label>Снимки (${(p.photos || []).length} качени)</label>
+          <label for="e_photo_input">Снимки (${(p.photos || []).length} качени)</label>
           <input type="file" id="e_photo_input" accept="image/jpeg,image/png,image/webp" multiple data-change-action="upload-plant-photos" data-plant-id="${escapeHtml(p.id)}">
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green-fill); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
       </div>
     </article>
   `;

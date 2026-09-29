@@ -67,6 +67,21 @@ Push само към собствения feature branch, после Draft PR к
 - **Контраст:** минимум 4.5:1 за обикновен текст (WCAG AA) — важно за снимки на растения с overlay текст
 - **Мобилна четимост:** каталогът вероятно се разглежда и на телефон по време на туристически преход — тествай на 320px ширина
 
+### Достъпност (WCAG 2.2 AA) — задължителни правила
+
+Пълен одит и решения: `docs/ACCESSIBILITY.md`. Регресионни тестове: `tests/e2e/accessibility.spec.js`.
+
+- Действия са `<button type="button">`, никога `<div>` с `data-action` без бутон вътре. Плочката на растение се отваря от бутона `.plant-card-open` в заглавието.
+- Всяко поле има `<label for>` (или `.sr-only` label в toolbar-а). Placeholder не е label.
+- Нов overlay/модал: `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, отваряне/затваряне само през `openDialog(id)` / `closeDialog(id)` в `app.js` (фокус, `inert`, Tab trap, Escape, връщане на фокуса).
+- Бутони само с символ (×, ▲) имат `aria-label`; емоджи-иконите са в `<span aria-hidden="true">`.
+- Цветове: текст ≥ 4.5:1 и в двете теми. `--green` е за текст/акцент; фон с бял текст е `--green-fill` / `--green-fill-hover`. Не махай `outline` без замяна — фокусът е `:focus-visible` с `--focus-ring`.
+- Динамични съобщения: `role="status"` (прогрес, брояч, резултат), `role="alert"` (грешки във форми).
+- Състояния: превключватели с `aria-pressed`, текуща страница с `aria-current="page"`.
+- Анимации уважават `prefers-reduced-motion` (JS скрол — `scrollBehavior()`).
+- Латински имена с `lang="la"`.
+- Тестовете търсят по роля и достъпно име (`getByRole`); ако това е трудно, поправи markup-а, не теста.
+
 ## Роля на GitHub Copilot Pro в този проект
 
 Copilot Pro получава само изолирани, добре ограничени задачи през Issue/PR — работи в собствен `copilot/` branch, отваря Draft PR, не push-ва към `main`, не merge-ва сам.

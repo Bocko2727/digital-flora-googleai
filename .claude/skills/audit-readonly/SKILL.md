@@ -22,17 +22,25 @@ git log --oneline -1 origin/refactor/catalog-foundation
 
 Flag: detached HEAD, active merge/rebase, uncommitted changes, being on `main`.
 
-## 2. GitHub (`mcp__github__*`)
+## 2. GitHub (`mcp__github__*`, or the claude.ai `mcp__Github__*` connector)
 
-- `list_pull_requests` with `state: all`, `perPage: 10`,
-  `fields: [number, title, state, draft, merged, head, merged_at]` — flag open PRs
-  whose head is already merged, duplicates, and PRs that touch the same files as
-  the planned task.
-- `actions_list` → `list_workflow_runs` with `perPage: 5` — last `Quality` run on
-  `main`, on open PRs and on `refactor/catalog-foundation`.
+- `list_pull_requests` with `state: open`, `perPage: 30` (fetch the next `page` while
+  30 come back), `fields: [number, title, draft, head, base, created_at, updated_at]` —
+  every open PR; flag stale ones (`updated_at`), PRs whose `base` is not `main`,
+  duplicates, and PRs that touch the same files as the planned task.
+- `list_pull_requests` with `state: closed`, `perPage: 10`,
+  `fields: [number, title, merged, head, base, merged_at]` — recent merges; flag open
+  PRs whose head is already merged.
+- `actions_list` → `list_workflow_runs` with `resource_id: quality.yml`, `perPage: 1`
+  and `workflow_runs_filter.branch` set to `main`, then `refactor/catalog-foundation`,
+  then each open PR's head — the last `Quality` run on each.
 - `pull_request_read` `get_files` returns full patches (100k+ characters on a large
   PR) — read only the file names.
 - `list_branches` — note whether `main` is `protected` (repo setting; only the owner can change it).
+- The claude.ai `mcp__Github__*` connector has no `actions_*` or `get_job_logs`. Where it
+  is the only GitHub server, read PR CI with `pull_request_read` `get_check_runs` and the
+  `main` run with `gh run list --workflow quality.yml --branch main --limit 1` if `gh`
+  exists; otherwise `[BLOCKED: no Actions tools]`.
 
 ## 3. Supabase (project `sxuxtsbyqjaodyuqebux`)
 

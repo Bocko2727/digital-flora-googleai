@@ -43,7 +43,7 @@ Browser UI (index.html + app.js, sw.js, theme-init.js; без framework)
 
 | Път | Тригер | Какво публикува |
 |---|---|---|
-| Vercel проект `digital-flora-googleai` (framework `node`, Node 24.x) | push/merge към `main` | **Production** — Production Branch е `main` от 2026-09-26 ~06:10 UTC (live проверка 2026-09-27) |
+| Vercel проект `digital-flora-googleai` (framework `node`, Node 24.x) | push/merge към `main` | **Production** — Production Branch е `main` от 2026-09-26 ~06:10 UTC (live проверка 2026-09-29) |
 | Vercel preview | push към друг branch / PR | Preview (Deployment Protection е изключен; Preview средата няма работещи Supabase env → архивен fallback) |
 | GitHub Pages (`.github/workflows/static.yml`) | push към `main` (т.е. всеки merge) | Само статичен frontend, без backend — legacy; не го бъркай с Vercel |
 
@@ -53,19 +53,24 @@ commit-а (`ae643dc`…`ddf798c`) не са в `main` и са заменени �
 `vercel.json` фиксира `installCommand: "npm ci"`, защото настройките на проекта
 пропускат install стъпката (build лог: `Skipping "install" command`).
 
-### Известни рискове (към 2026-09-27 — провери отново)
+### Известни рискове (към 2026-09-29 — провери отново)
 
-- **Production беше паднал от 2026-09-26 07:52 UTC** (поне до 2026-09-27 18:33 UTC):
-  домейните сочеха към `dpl_EGJzU13C9Vezo1k8vyN5UCfvmGrf` (`main@6a6d744`), който връща
-  500 на всяка заявка (`Cannot find package 'express'`). Поправката е `vercel.json` +
-  `export default app` (PR #37); последният работещ deployment преди нея е
-  `dpl_EN29n47j9AKHRtY5ubdxUQqpkV7d` (PR #36, merge-нат по грешка в
-  `claude/vercel-records-loading-ynzc62`, не в `main`). Провери live състоянието.
-- **Production `SUPABASE_DB_URL` сочи към `db.sxuxtsbyqjaodyuqebux.supabase.co`** —
-  само IPv6 на Free план, затова от Vercel всеки pg connect е `getaddrinfo ENOTFOUND`.
-  Нужен е Transaction pooler URI (`aws-*.pooler.supabase.com:6543`, потребител
-  `postgres.<ref>`); смяната на env е решение на собственика (§4.4). Дотогава четене,
-  роля и запис минават през Data API fallback-а (`src/db/supabase-rest.js`).
+- **Production работи:** `dpl_C5HuiSsCEgicAmMre3yNLo2sXA6z` = `main@4f23216` (PR #42),
+  READY (live проверка 2026-09-29). Сривът от 2026-09-26/27 (`Cannot find package
+  'express'`) е поправен с `vercel.json` + `export default app` (PR #37).
+- **Качването с AI анализ може да връща 502 при Gemini 503 „high demand“.** На
+  2026-09-29 10:40–11:05 UTC и трите модела от `GEMINI_MODELS` (`server.js`) върнаха
+  503 въпреки fallback-а от PR #42. Причината (претоварване при Google или нисък
+  приоритет на безплатния ключ) не е установена. Ръчното добавяне и качването на
+  снимки от редактора (`/api/plants/:id/photos`) не зависят от AI.
+- **`SUPABASE_DB_URL` в Production е сменен от собственика на pooler URI** (2026-09-29).
+  След redeploy няма `getaddrinfo ENOTFOUND` (проверено с `get_runtime_errors`);
+  грешката остава само в по-стари deployment-и. Data API fallback-ът
+  (`src/db/supabase-rest.js`) остава като резервен път. `GEMINI_API_KEY` също е
+  зададен от собственика. Стойностите на env не се четат (§9).
+- **Vercel runtime логовете пазят около 1 час** (по-дълъг прозорец връща
+  `ExceedsBillingLimitError`). За по-стари грешки ползвай `get_runtime_errors` (до 7 дни,
+  групирани, без пълните редове на лога).
 - **Supabase↔Vercel интеграцията е с грешен префикс:** имената на env променливите
   започват с publishable key-а (`sb_publishable_…_SUPABASE_URL` и т.н.); в Preview
   стойностите им са невалидни (`ENOTFOUND base`, `fetch failed`). Production работи само

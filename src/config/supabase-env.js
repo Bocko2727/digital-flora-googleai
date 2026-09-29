@@ -21,8 +21,10 @@ export function getSupabasePublishableKey() {
   ]);
 }
 
+// Server-only key: the legacy service_role JWT or a new sb_secret_ key (the
+// Supabase-Vercel integration injects the latter as SUPABASE_SECRET_KEY).
 export function getSupabaseServiceRoleKey() {
-  return findEnvironmentValue('SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_ROLE_KEY']);
+  return findEnvironmentValue('SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY']);
 }
 
 export function getSupabaseDbUrl() {

@@ -1,9 +1,12 @@
 # Deployment Plan
 
-## Current state (verified 2026-09-23)
+## Current state (verified 2026-09-27)
 
-- Vercel project `digital-flora-googleai` exists (framework `express`, Node 24.x), linked to this repository.
-- Production deployments come from `refactor/catalog-foundation` (latest READY production build: `da85adc`, tree identical to `main` at `ed59388`). Other branches get Preview deployments.
+- Vercel project `digital-flora-googleai` exists (framework `node`, Node 24.x), linked to this repository.
+- Production deployments come from `main` (Production Branch since 2026-09-26 ~06:10 UTC; before that `refactor/catalog-foundation`, last build `da85adc`). Every merge into `main` deploys production; other branches get Preview deployments.
+- `vercel.json` pins `installCommand: "npm ci"`: the project settings skip the install step, and without it every function crashes with `Cannot find package 'express'` (the 2026-09-26 outage).
+- `server.js` default-exports the Express app; Vercel serves that export and the app does not listen on a port there.
+- Database: from Vercel, `SUPABASE_DB_URL` must be the Supavisor Transaction pooler URI (`aws-*.pooler.supabase.com:6543`). The direct host `db.<ref>.supabase.co` is IPv6-only and fails with `getaddrinfo ENOTFOUND`. When the pool cannot connect, reads, role lookups and writes use the Supabase Data API instead (`src/db/supabase-rest.js`).
 - `.github/workflows/static.yml` also deploys a static-only copy to GitHub Pages on every push to `main`.
 - `CLAUDE.md` §2 is the maintained source for this section; the plan below is the original 2026-08-17 recommendation.
 

@@ -151,10 +151,12 @@ document.addEventListener('error', (e) => {
       if (!container) return;
       if (window.currentUser) {
         const emailLabel = escapeHtml(window.currentUser.email || 'потребител');
-        const roleLabel = window.currentProfileRole || 'viewer';
+        const roleUnknown = !window.currentProfileRole && window.authRoleUnavailable;
+        const roleLabel = roleUnknown ? 'ролята не е достъпна' : (window.currentProfileRole || 'viewer');
+        const roleTitle = roleUnknown ? ' title="Сървърът не можа да провери ролята ви. Редакцията е временно недостъпна — опитайте отново по-късно."' : '';
         container.innerHTML = `
       <div class="user-profile">
-        <span class="user-name">${emailLabel} (${roleLabel})</span>
+        <span class="user-name"${roleTitle}>${emailLabel} (${escapeHtml(roleLabel)})</span>
         <button class="logout-mini" data-action="logout">Изход</button>
       </div>
     `;
@@ -224,19 +226,24 @@ document.addEventListener('error', (e) => {
         setCachedAccessToken(null);
         window.currentUser = null;
         window.currentProfileRole = null;
+        window.authRoleUnavailable = false;
       }
       renderAuthUi();
     }
 
     // Convenience-only role lookup for the UI; the server enforces the real
     // authorization decision independently on every write request (Task 6).
+    // A 503 (or no answer) means the server could not check the role right
+    // now: the UI says so instead of silently showing an editor as a viewer.
     async function resolveOwnRole(token) {
       try {
         const res = await fetch('/api/auth/whoami', { headers: { Authorization: `Bearer ${token}` } });
+        window.authRoleUnavailable = res.status === 503;
         if (!res.ok) return null;
         const data = await res.json();
         return data.role || null;
       } catch (e) {
+        window.authRoleUnavailable = true;
         return null;
       }
     }
@@ -344,7 +351,7 @@ document.addEventListener('error', (e) => {
       localStorage.setItem('theme', newTheme);
     };
 
-    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е ��снование за консумация или самолечение.';
+    const src = 'Таксономия: Plants of the World Online (Royal Botanic Gardens, Kew); разпространение: проверка чрез български флористични източници; рискове: ветеринарни/токсикологични източници при нужда. Снимковото определяне не е основание за консумация или самолечение.';
 
     window.allPlants = [];
     window.filteredPlants = [];
@@ -429,6 +436,7 @@ document.addEventListener('error', (e) => {
       setCachedAccessToken(null);
       window.currentUser = null;
       window.currentProfileRole = null;
+      window.authRoleUnavailable = false;
       renderAuthUi();
     };
 
@@ -1027,7 +1035,7 @@ document.addEventListener('error', (e) => {
           <div id="photoUploadStatus" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
         </div>
 
-        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 ��апази промените</button>
+        <button data-action="save-plant" data-plant-id="${escapeHtml(p.id)}" style="background:var(--green); color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; width:100%; font-weight:bold; font-size:15px; margin-top:10px;">💾 Запази промените</button>
       </div>
     </article>
   `;

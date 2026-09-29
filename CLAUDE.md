@@ -24,7 +24,8 @@ deploy. Оптимизирай за малък, проверен, обратим
 ```text
 Browser UI (index.html + app.js, sw.js, theme-init.js; без framework)
   → Express REST API (server.js; helmet, express-rate-limit, auth middleware)
-  → Supabase: Postgres (src/db/supabase.js via pg + SUPABASE_DB_URL),
+  → Supabase: Postgres (src/db/supabase.js via pg + SUPABASE_DB_URL; при неуспешен
+              connect → Data API fallback в src/db/supabase-rest.js),
               Auth (src/auth/catalog-authorization.js),
               Storage bucket plant-images (src/storage/supabase-images.js, REST fetch)
 ```
@@ -42,18 +43,35 @@ Browser UI (index.html + app.js, sw.js, theme-init.js; без framework)
 
 | Път | Тригер | Какво публикува |
 |---|---|---|
-| Vercel проект `digital-flora-googleai` (framework `express`, Node 24.x) | push към `refactor/catalog-foundation` | **Production** (последен READY production deploy: `da85adc` от `refactor/catalog-foundation`) |
-| Vercel preview | push към друг branch / PR | Preview (Vercel Deployment Protection е включен) |
+| Vercel проект `digital-flora-googleai` (framework `node`, Node 24.x) | push/merge към `main` | **Production** — Production Branch е `main` от 2026-09-26 ~06:10 UTC (live проверка 2026-09-27) |
+| Vercel preview | push към друг branch / PR | Preview (Deployment Protection е изключен; Preview средата няма работещи Supabase env → архивен fallback) |
 | GitHub Pages (`.github/workflows/static.yml`) | push към `main` (т.е. всеки merge) | Само статичен frontend, без backend — legacy; не го бъркай с Vercel |
 
-`refactor/catalog-foundation` се синхронизира от `main` **само** при изрично одобрен
-deploy (fast-forward/merge commit с tree == `main`, без force-push). Смяната на
-Vercel Production Branch към `main` е отделна hosting промяна (§4.4).
+**Всеки merge в `main` е production deploy.** `refactor/catalog-foundation` вече не е
+production branch (последният му production deploy е `da85adc`); 4-те му deploy-debug
+commit-а (`ae643dc`…`ddf798c`) не са в `main` и са заменени от `vercel.json`.
+`vercel.json` фиксира `installCommand: "npm ci"`, защото настройките на проекта
+пропускат install стъпката (build лог: `Skipping "install" command`).
 
-### Известни рискове (към 2026-09-24 — провери отново)
+### Известни рискове (към 2026-09-27 — провери отново)
 
-- `main` **не е защитен** в GitHub (branch protection е изключен). Локалната защита е
-  само `.claude/settings.json` + hook. Включването на protection е решение на собственика.
+- **Production беше паднал от 2026-09-26 07:52 UTC** (поне до 2026-09-27 18:33 UTC):
+  домейните сочеха към `dpl_EGJzU13C9Vezo1k8vyN5UCfvmGrf` (`main@6a6d744`), който връща
+  500 на всяка заявка (`Cannot find package 'express'`). Поправката е `vercel.json` +
+  `export default app` (PR #37); последният работещ deployment преди нея е
+  `dpl_EN29n47j9AKHRtY5ubdxUQqpkV7d` (PR #36, merge-нат по грешка в
+  `claude/vercel-records-loading-ynzc62`, не в `main`). Провери live състоянието.
+- **Production `SUPABASE_DB_URL` сочи към `db.sxuxtsbyqjaodyuqebux.supabase.co`** —
+  само IPv6 на Free план, затова от Vercel всеки pg connect е `getaddrinfo ENOTFOUND`.
+  Нужен е Transaction pooler URI (`aws-*.pooler.supabase.com:6543`, потребител
+  `postgres.<ref>`); смяната на env е решение на собственика (§4.4). Дотогава четене,
+  роля и запис минават през Data API fallback-а (`src/db/supabase-rest.js`).
+- **Supabase↔Vercel интеграцията е с грешен префикс:** имената на env променливите
+  започват с publishable key-а (`sb_publishable_…_SUPABASE_URL` и т.н.); в Preview
+  стойностите им са невалидни (`ENOTFOUND base`, `fetch failed`). Production работи само
+  с ръчно зададените точни имена. Не hardcode-вай префиксираните имена в кода.
+- `main` **е защитен** в GitHub (проверено 2026-09-26). Локалната защита остава
+  `.claude/settings.json` + hook.
 - **Migration history drift:** `20260924070000_restore_authenticated_role_plants_write_policies`
   е приложена ръчно през SQL Editor на 2026-09-24 (`pg_policies` показва
   `{authenticated}` за трите write policies на `plants`), но **липсва** в
@@ -71,7 +89,7 @@ Vercel Production Branch към `main` е отделна hosting промяна 
 
 ```bash
 npm ci                                   # точни dependencies от lockfile
-npm run dev                              # node server.js, PORT (default 3000); нужен е локален .env
+npm run dev                              # node --env-file-if-exists=.env server.js, PORT (default 3000)
 npm run lint                             # scripts/qa/check-syntax.js — node --check на tracked JS
 npm test                                 # node --test tests/*.test.js
 npm run build                            # no-op (няма build стъпка)
@@ -93,8 +111,8 @@ Skill `pre-merge-verify` изпълнява същите проверки лок
 2.  Никога не merge-вай pull request (и не включвай auto-merge).
 3.  Никога не force-push-вай, не пренаписвай история, не squash-вай споделени commits.
 4.  Никога не създавай production/preview deployment и не променяй hosting/build/domain/
-    environment configuration (Vercel, GitHub Pages или друга платформа). Push към
-    `refactor/catalog-foundation` Е production deploy.
+    environment configuration (Vercel, GitHub Pages или друга платформа). Merge/push
+    към `main` Е production deploy (Vercel Production Branch = `main`).
 5.  Никога не показвай, не commit-вай, не логвай и не искай съдържание на .env, API keys,
     tokens, passwords, cookies, database URLs, OAuth codes или Supabase service-role key.
 6.  Никога не поставяй server-side secret или service-role key в client/browser код.
@@ -150,8 +168,7 @@ force-push, изтриване на remote branch и push към `main`). Не �
 3. Преди push: skill `pre-merge-verify` (или агент `qa-verifier`) — всичко PASSED.
 4. git push -u origin <branch> (никога main, никога --force).
 5. Draft PR към main с: обхват, файлове, data impact, validation, рискове, rollback.
-6. Merge прави само собственикът. Deploy = отделно одобрена синхронизация на
-   refactor/catalog-foundation (§2).
+6. Merge прави само собственикът; merge в `main` = production deploy (§2).
 ```
 
 Не смесвай data/schema, UI, image processing и QA в един commit.

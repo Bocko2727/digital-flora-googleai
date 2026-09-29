@@ -52,7 +52,9 @@ pushes to `main` and `refactor/catalog-foundation`; run the same checks first
 
 ## Triggering a real deploy
 
-Vercel's Production Branch is currently `refactor/catalog-foundation`, not
-`main` (until the project is mature enough to switch it — see CLAUDE.md §2).
-To publish: sync `refactor/catalog-foundation` from `main` (fast-forward or
-merge), then push that branch — this also re-runs `quality.yml` CI.
+Vercel's Production Branch is `main` (since 2026-09-26, see CLAUDE.md §2): the
+owner's merge of a PR into `main` is the production deploy. Every other branch
+gets a Preview deployment, whose environment has no working Supabase settings,
+so previews serve the read-only archive. `vercel.json` pins the install step
+(`npm ci`); without it the project skips installing dependencies and every
+function crashes with `Cannot find package 'express'`.

@@ -16,7 +16,7 @@
 
 ## Активни проектни контракти
 
-- Branch модел: feature branch от `main` → Draft PR към `main` → merge само от собственика (CLAUDE.md §6). `refactor/catalog-foundation` е Vercel Production Branch и се синхронизира от `main` само при изрично одобрен deploy (CLAUDE.md §2).
+- Branch модел: feature branch от `main` → Draft PR към `main` → merge само от собственика (CLAUDE.md §6). Vercel Production Branch е `main`, така че всеки merge в `main` е production deploy (CLAUDE.md §2).
 - Пълните твърди граници, работен цикъл и приоритети са в `CLAUDE.md` в root-а на repo-то — той е меродавният документ за git/security/QA дисциплина. Този файл (`AGENTS.md`) описва само стека и конвенциите за код.
 
 ## Backend сигурност — чеклист преди merge
@@ -56,7 +56,7 @@ git commit -m "feat(qa): add validation step to validate-plant-data.js"
 git commit -m "docs: update AGENTS.md with current stack"
 ```
 
-Push само към собствения feature branch, после Draft PR към `main`. Никога директно към `main` или `refactor/catalog-foundation` (последното е production deploy). Едно commit = една техническа цел — не смесвай data/schema, UI, image processing и QA в един commit.
+Push само към собствения feature branch, после Draft PR към `main`. Никога директно към `main` (merge в него е production deploy). Едно commit = една техническа цел — не смесвай data/schema, UI, image processing и QA в един commit.
 
 ## UI/Design принципи (за index.html)
 

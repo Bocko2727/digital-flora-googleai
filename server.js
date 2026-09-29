@@ -132,7 +132,15 @@ function isCatalogInputError(error) {
 
 
 function forwardCatalogMutationError(res, next, error) {
-  if (isCatalogInputError(error)) {
+  // Codes set by src/db/supabase-rest.js when a write went through the Data API.
+  if (error.code === 'CATALOG_DATABASE_UNAVAILABLE') {
+    console.error('Catalog write failed:', error.message);
+    return res.status(503).json({ error: 'Каталогът временно не е достъпен. Опитайте отново по-късно.', code: 'CATALOG_DATABASE_UNAVAILABLE' });
+  }
+  if (error.code === 'CATALOG_ACCESS_DENIED') {
+    return res.status(403).json({ error: 'Your catalog role does not permit this operation.', code: 'CATALOG_WRITE_FORBIDDEN' });
+  }
+  if (error.code === 'CATALOG_INVALID_INPUT' || isCatalogInputError(error)) {
     return res.status(400).json({
       error: 'Данните за растението са невалидни.',
       code: 'INVALID_PLANT_INPUT',
@@ -219,7 +227,7 @@ app.post(['/api/plants', '/api/sql/plants'], moderateLimiter, authenticateCatalo
 
 app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const plant = await updateSupabasePlant(req.params.id, req.body);
+    const plant = await updateSupabasePlant(req.params.id, req.body, req.catalogActor);
     if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
     return res.json({ success: true, plant });
   } catch (error) {
@@ -230,7 +238,7 @@ app.put('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCat
 
 app.delete('/api/plants/:id', moderateLimiter, authenticateCatalogActor, requireCatalogWritePermission, async (req, res, next) => {
   try {
-    const plant = await deleteSupabasePlant(req.params.id);
+    const plant = await deleteSupabasePlant(req.params.id, req.catalogActor);
     if (!plant) return res.status(404).json({ error: 'Plant not found.', code: 'PLANT_NOT_FOUND' });
     return res.json({ success: true });
   } catch (error) {
@@ -254,7 +262,7 @@ app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePerm
   if (!base64 && typeof filename === 'string' && filename.startsWith('data:image')) {
     try { const parsed = parsePlantImageDataUri(filename); mimeType = parsed.mimeType; base64 = parsed.buffer.toString('base64'); } catch (e) { return res.status(400).json({ error: 'Снимката трябва да е JPEG, PNG или WebP до 5 MB.', code: 'INVALID_IMAGE' }); }
   }
-  if (!base64) return res.status(404).json({ error: 'Снимката не е намере��а' });
+  if (!base64) return res.status(404).json({ error: 'Снимката не е намерена' });
   const prompt = `You are an expert botanist performing Quality Assurance. Look at this image carefully. Is this plant really "${safeClaimedName}" (${safeLatinName})? Answer YES or NO (strictly start your verdict with YES or NO), and provide a short 1-2 sentence explanation in Bulgarian.`;
   try {
     let verdict = '';
@@ -332,7 +340,7 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
 
 
     let exists;
-    try { exists = await supabasePlantExists(req.params.id); } catch (dbError) {
+    try { exists = await supabasePlantExists(req.params.id, req.catalogActor); } catch (dbError) {
       if (/Invalid plant id/.test(dbError.message)) throw dbError;
       console.error('Photo upload: plant lookup failed:', dbError.message);
       return res.status(502).json({ error: 'Catalog database is temporarily unavailable.', code: 'DATABASE_UNAVAILABLE' });
@@ -342,7 +350,7 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
 
     const stored = await storePlantImage(req.params.id, image);
     let updatedPlant;
-    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl); } catch (dbError) {
+    try { updatedPlant = await appendSupabasePlantPhoto(req.params.id, stored.imageUrl, req.catalogActor); } catch (dbError) {
       // The Storage object already exists; it is NOT deleted here (storage
       // deletes need explicit approval). Log the key so it can be traced.
       console.error('Photo upload: stored %s but could not attach it to plant %s: %s', stored.objectKey, req.params.id, dbError.message);
@@ -391,9 +399,20 @@ app.get('/', staticAssetLimiter, (req, res) => { res.sendFile(path.join(__dirnam
 app.use((err, req, res, next) => { console.error('Unhandled Express error:', err); if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' }); });
 
 
-const HOST = '0.0.0.0';
-const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
+// Vercel imports this module and serves the default export as its function
+// handler; it must not open its own port there. `node server.js` (npm run
+// dev/start, the Playwright webServer) listens as before. Tests import the
+// app without starting a listener.
+export default app;
 
+function isDirectRun() {
+  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(__filename); } catch { return false; }
+}
 
-process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
-process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+if (!process.env.VERCEL && isDirectRun()) {
+  const HOST = '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => { console.log(`Server running at http://${HOST}:${PORT}`); });
+
+  process.on('SIGTERM', () => { console.log('SIGTERM signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+  process.on('SIGINT', () => { console.log('SIGINT signal received: closing HTTP server'); server.close(() => { console.log('HTTP server closed'); process.exit(0); }); });
+}

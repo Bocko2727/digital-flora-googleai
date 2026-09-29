@@ -4,8 +4,8 @@
   "description": "Дигитален ботанически хербарий и енциклопедия на флората",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
-    "start": "node server.js",
+    "dev": "node --env-file-if-exists=.env server.js",
+    "start": "node --env-file-if-exists=.env server.js",
     "build": "echo 'No build step required'",
     "lint": "node scripts/qa/check-syntax.js",
     "test": "node --test tests/*.test.js",

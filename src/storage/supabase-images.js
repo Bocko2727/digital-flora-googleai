@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '../config/supabase-env.js';
+import { apiKeyHeaders } from '../db/supabase-rest.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MIME_TO_EXTENSION = {
@@ -56,8 +57,7 @@ export async function storePlantImage(plantId, image) {
     const response = await fetch(target, {
         method: 'POST',
         headers: {
-            apikey: secretKey,
-            authorization: `Bearer ${secretKey}`,
+            ...apiKeyHeaders(secretKey),
             'content-type': mimeType,
             'x-upsert': 'false',
         },

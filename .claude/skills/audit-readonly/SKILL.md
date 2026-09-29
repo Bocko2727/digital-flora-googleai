@@ -1,6 +1,6 @@
 ---
 name: audit-readonly
-description: Read-only session-start baseline for Digital Flora (CLAUDE.md §9) — git state, open PRs, CI runs, Supabase migration drift and advisors, Vercel production deployment. Use at the start of a session or before planning work; never changes anything.
+description: Read-only session-start baseline for Digital Flora (CLAUDE.md §12) — git state, open PRs, CI runs, Supabase migration drift and advisors, Vercel production deployment. Use at the start of a session or before planning work; never changes anything.
 ---
 
 # Read-only audit — Digital Flora
@@ -24,16 +24,23 @@ Flag: detached HEAD, active merge/rebase, uncommitted changes, being on `main`.
 
 ## 2. GitHub (`mcp__github__*`)
 
-- `list_pull_requests` with `state: all` — flag open PRs whose head is already
-  merged, duplicates, and PRs that touch the same files as the planned task.
-- `actions_list` → `list_workflow_runs` — last `Quality` run on `main`, on open PRs
-  and on `refactor/catalog-foundation`.
+- `list_pull_requests` with `state: all`, `perPage: 10`,
+  `fields: [number, title, state, draft, merged, head, merged_at]` — flag open PRs
+  whose head is already merged, duplicates, and PRs that touch the same files as
+  the planned task.
+- `actions_list` → `list_workflow_runs` with `perPage: 5` — last `Quality` run on
+  `main`, on open PRs and on `refactor/catalog-foundation`.
+- `pull_request_read` `get_files` returns full patches (100k+ characters on a large
+  PR) — read only the file names.
 - `list_branches` — note whether `main` is `protected` (repo setting; only the owner can change it).
 
 ## 3. Supabase (project `sxuxtsbyqjaodyuqebux`)
 
 Use `mcp__supabase__*` (project `.mcp.json`, read-only) or the claude.ai
-`mcp__Supabase__*` connector, whichever connects.
+`mcp__Supabase__*` connector, whichever connects. In Claude Code cloud sessions
+the `.mcp.json` server does not connect (the network policy denies
+`mcp.supabase.com` and the container cannot complete OAuth) — use
+`mcp__Supabase__*` there.
 
 - `list_migrations` — compare with `ls supabase/migrations/`. A remote version
   missing locally is **drift**: report it; do not apply or recreate anything.

@@ -4,6 +4,7 @@
 //   node .claude/skills/run-digital-flora/driver.mjs            # start server, smoke flow, stop
 //   node .claude/skills/run-digital-flora/driver.mjs --search Papaver --mobile
 //   BASE_URL=http://127.0.0.1:3100 node .../driver.mjs          # reuse a server you started
+//   CHROMIUM_PATH=/opt/pw-browsers/chromium node .../driver.mjs  # Claude Code cloud container
 //
 // The server it starts runs with the Supabase/AI env vars REMOVED, so the
 // catalog is served read-only from the bundled archive (X-Catalog-Source:
@@ -53,7 +54,10 @@ if (!base) {
 }
 
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch().catch((e) => {
+// CHROMIUM_PATH launches a preinstalled browser instead of Playwright's own download
+// (Claude Code cloud containers: /opt/pw-browsers/chromium; never `playwright install` there).
+const launchOptions = process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {};
+const browser = await chromium.launch(launchOptions).catch((e) => {
   if (server) server.kill(); // don't leave the server holding the port
   console.error(`chromium did not start: ${e.message.split('\n').find((l) => l.includes('error while loading')) || e.message.split('\n')[0]}`);
   process.exit(2);

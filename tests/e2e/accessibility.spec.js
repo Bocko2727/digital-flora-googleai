@@ -92,6 +92,8 @@ test.describe('accessibility', () => {
   for (const theme of ['light', 'dark']) {
     test(`text contrast meets 4.5:1 in the ${theme} theme`, async ({ page }) => {
       await page.addInitScript((t) => localStorage.setItem('theme', t), theme);
+      // No colour transitions mid-measurement (the CSS honours reduced motion).
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       await mockCatalogApi(page);
       await page.goto('/');
       await expect(page.locator('.plant-card').first()).toBeVisible();

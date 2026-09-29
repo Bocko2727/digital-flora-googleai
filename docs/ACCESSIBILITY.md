@@ -6,7 +6,7 @@
 |---|---|
 | Scope | `index.html` + `app.js`: catalog grid, sticky controls, plant detail dialog, editor sign-in dialog, create-plant dialog, edit form; light and dark theme; 1280px, 375px and 320px |
 | Standard | WCAG 2.2 level AA (plus axe best-practice rules) |
-| Baseline | `main@6a6d744` (fixes ported onto `main@f182c92`) |
+| Baseline | audited on `main@6a6d744`, rebased and re-verified on `main@f182c92` |
 | Method | 5 layers: axe-core 4 scan in Chromium (8 states), keyboard walk-through, accessible-name/role inspection, visual/contrast review, flow review |
 | Date | 2026-09-27 |
 
@@ -14,7 +14,7 @@
 
 The catalog was not usable without a mouse: **plant cards could not be reached or opened with the keyboard**, dialogs did not take focus, and every search/filter control and every form field lacked a programmatic label. The dark theme failed text contrast in 21 places because one colour (`--green`) served both as text on dark surfaces and as the fill behind white text.
 
-All findings below are fixed in this branch. On the audit baseline, axe reported **0 violations in all 8 audited states after the fixes** (was 4–6 rule failures per state, 1 serious in light and up to 39 nodes in dark). The new `tests/e2e/accessibility.spec.js` guards the fixes.
+All findings below are fixed in this branch. After the fixes axe reports **0 violations in all 8 audited states** (was 4–6 rule failures per state, 1 serious in light and up to 39 nodes in dark), the new `tests/e2e/accessibility.spec.js` guards the fixes, and the full e2e suite passes (58/58 on top of `main@f182c92`).
 
 ## Score summary
 
@@ -80,8 +80,8 @@ Close „×“ and back-to-top „▲“ were read as symbols; emoji icons were 
 **Fix:** `aria-label` „Затвори“ / „Нагоре“, emoji wrapped in `aria-hidden` spans, logo and card images `alt=""`.
 
 ### 13. Corrupted text in the UI — Moderate · 3.1 (readability), 4.1.2
-On the audit baseline `app.js` contained U+FFFD replacement characters: the save button read „??апази промените“ and the sources line „??снование“. Screen readers announced garbage and 4 e2e tests (`getByRole('button', { name: /Запази промените/ })`) failed.
-**Fix:** restored „Запази“ and „основание“. This was landed on `main` separately in `143bcc7`, so this branch carries no extra change for it.
+`app.js` on `main@6a6d744` contained U+FFFD replacement characters in place of the first letter of „Запази промените“ (save button) and „основание“ (sources line). Screen readers announced garbage and 4 e2e tests (`getByRole('button', { name: /Запази промените/ })`) failed.
+**Fix:** landed on `main` in `143bcc7` (fix(ui): repair UTF-8 text) while this audit was open; `tests/source-encoding.test.js` now guards it.
 
 ### 14. Motion — Low · 2.3.3 (AAA)
 **Fix:** `prefers-reduced-motion` disables transitions, hover lifts and smooth scrolling (CSS and the three JS `scrollIntoView`/`scrollTo` calls).

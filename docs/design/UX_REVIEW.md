@@ -1,6 +1,6 @@
 # UX review — Digital Flora (design skills pass, 2026-09-27)
 
-Companion to `docs/ACCESSIBILITY.md`. Each section applies one design discipline to the current catalog (`main@6a6d744` + the accessibility branch). Items marked **✅ done** are implemented in this branch; the rest are proposals, ordered by value.
+Companion to `docs/ACCESSIBILITY.md`. Each section applies one design discipline to the current catalog (`main@f182c92` + the accessibility branch). Items marked **✅ done** are implemented in this branch; the rest are proposals, ordered by value.
 
 Two users drive every decision below:
 
@@ -65,7 +65,7 @@ Two users drive every decision below:
 | Save error | alert „Грешка при запазване: <msg>“ | inline: „Промените не са запазени. <msg> Опитай отново.“ | Says what happened and what to do |
 | Delete confirm | „Сигурни ли сте, че искате да изтриете този ботанически запис?“ | „Изтриване на „<име>“? Действието не може да се отмени.“ | Names the object and the consequence; drops the formal „Вие“ to match the app's „ти“ voice |
 | Empty result | „Няма намерени растения по тези критерии.“ | „Няма намерени растения с тези филтри. Изчисти филтрите или опитай с латинско име.“ **✅ done** | Gives a way out |
-| Corrupted strings | „??апази промените“, „??снование“ | „Запази промените“, „основание“ | Fixed on `main` in `143bcc7` |
+| Corrupted strings | first letter of „Запази промените“ and „основание“ rendered as U+FFFD | „Запази промените“, „основание“ | **✅ done** on `main` (`143bcc7`) |
 
 Keep unchanged: the accuracy note, „AI текст — непроверен“, and the three status words. They are the product's core honesty and they read well.
 

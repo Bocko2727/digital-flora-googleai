@@ -205,6 +205,36 @@ test.describe('AI upload flow status', () => {
     await expect(status).toContainText('Неуспешни: anon.jpg');
     await expect(status).toContainText('Обработени 0 от 1');
     await expect(status).toBeVisible();
+    await expect(status).not.toContainText('претоварена');
+    expect(createCalled).toBe(false);
+  });
+
+  test('AI overload (503 AI_OVERLOADED) shows the retry/manual hint and creates nothing', async ({ page }) => {
+    const overloadMessage = 'Услугата за разпознаване на снимки е претоварена. Опитай отново след няколко минути или добави растението ръчно.';
+    let createCalled = false;
+    await page.route('**/api/upload', (route) =>
+      route.fulfill({ status: 503, json: { error: overloadMessage, code: 'AI_OVERLOADED' } })
+    );
+    await page.route('**/api/plants', (route) => {
+      if (route.request().method() === 'POST') {
+        createCalled = true;
+        return route.fulfill({ status: 500, json: { error: 'should not be called' } });
+      }
+      return route.fallback();
+    });
+
+    await page.goto('/');
+    await expect(page.locator('.plant-card')).toHaveCount(plantsFixture.length);
+    await page.setInputFiles('#uploadInput', {
+      name: 'busy.jpg',
+      mimeType: 'image/jpeg',
+      buffer: TINY_JPEG_BUFFER,
+    });
+
+    const status = page.locator('#uploadStatus');
+    await expect(status).toContainText('Неуспешни: busy.jpg');
+    await expect(status).toContainText(overloadMessage);
+    await expect(status).toBeVisible();
     expect(createCalled).toBe(false);
   });
 });

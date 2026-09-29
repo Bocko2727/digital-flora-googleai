@@ -10,6 +10,7 @@ import { getSupabasePlants, mapSupabaseConfidence } from './src/db/plants.js';
 import { authenticateCatalogActor, requireCatalogWritePermission } from './src/auth/catalog-authorization.js';
 import { appendSupabasePlantPhoto, deleteSupabasePlant, insertSupabasePlant, supabasePlantExists, updateSupabasePlant } from './src/db/supabase-catalog.js';
 import { parsePlantImageDataUri, storePlantImage } from './src/storage/supabase-images.js';
+import { generateWithModelFallback } from './src/ai/gemini-fallback.js';
 
 
 
@@ -74,31 +75,11 @@ async function generateWithKiloAI(prompt, base64Image, mimeType) {
 }
 
 
-function isGeminiOverloadedError(err) {
-  const msg = err && err.message ? String(err.message) : '';
-  return /"code"\s*:\s*503/.test(msg) || /UNAVAILABLE/.test(msg) || /high demand|overloaded/i.test(msg);
-}
-
-// Retries ONLY transient 503 "high demand" errors from Gemini, with
-// exponential backoff (1s -> 2s -> 4s), max 3 attempts total. Any other
-// error (including 429 quota-exhausted) is re-thrown immediately on the
-// first attempt — retrying a daily quota error wastes time and does not
-// help, per the free-tier RESOURCE_EXHAUSTED behaviour observed in
-// production on 2026-09-16.
-async function generateContentWithRetry(params, { maxAttempts = 3, baseDelayMs = 1000 } = {}) {
-  let lastErr;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (err) {
-      lastErr = err;
-      if (!isGeminiOverloadedError(err) || attempt === maxAttempts - 1) throw err;
-      const delayMs = baseDelayMs * Math.pow(2, attempt); // 1000, 2000, 4000
-      console.warn(`Gemini 503 (опит ${attempt + 1}/${maxAttempts}) — retry след ${delayMs}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-  throw lastErr;
+// Primary model first (retried on 503 "high demand"), then the older stable
+// Flash models once each if it stays overloaded — see src/ai/gemini-fallback.js.
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+function generateContentWithRetry(params) {
+  return generateWithModelFallback((request) => ai.models.generateContent(request), params, { models: GEMINI_MODELS });
 }
 
 
@@ -267,7 +248,7 @@ app.post('/api/qa', aiLimiter, authenticateCatalogActor, requireCatalogWritePerm
   try {
     let verdict = '';
     try {
-      const response = await generateContentWithRetry({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64, mimeType } }, { text: prompt }] } });
+      const response = await generateContentWithRetry({ contents: { parts: [{ inlineData: { data: base64, mimeType } }, { text: prompt }] } });
       verdict = response.text ? response.text.trim() : 'Няма отговор от AI.';
     } catch (geminiErr) {
       if (kiloApiKey) { console.log('Gemini QA failed, falling back to Kilo AI:', geminiErr.message); verdict = await generateWithKiloAI(prompt, base64, mimeType); } else { throw geminiErr; }
@@ -296,7 +277,7 @@ app.post('/api/upload', aiLimiter, authenticateCatalogActor, requireCatalogWrite
     const prompt = `You are an expert botanist. Analyze this plant image and provide the following details in Bulgarian in strict JSON format:{\n  "likely_scientific_name": "Latin name",\n  "likely_common_name_bg": "Bulgarian name",\n  "family": "Botanical family in Latin or Bulgarian",\n  "confidence": 0.9,\n  "identification_level": "species",\n  "visible_features": "Description in Bulgarian",\n  "possible_lookalikes": "Similar plants",\n  "safety_note": "Toxicity or warnings in Bulgarian",\n  "additional_photos_needed": "What else to photograph for better ID"\n}`;
     let aiData;
     try {
-      const response = await generateContentWithRetry({ model: 'gemini-3.6-flash', contents: { parts: [{ inlineData: { data: base64Image, mimeType } }, { text: prompt }] }, config: { responseMimeType: "application/json" } });
+      const response = await generateContentWithRetry({ contents: { parts: [{ inlineData: { data: base64Image, mimeType } }, { text: prompt }] }, config: { responseMimeType: "application/json" } });
       aiData = JSON.parse(response.text);
     } catch (geminiErr) {
       if (kiloApiKey) { console.log('Gemini recognition failed, attempting Kilo AI:', geminiErr.message); const textResult = await generateWithKiloAI(prompt + "\nReturn ONLY raw JSON without markdown backticks.", base64Image, mimeType); const cleanedText = textResult.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim(); aiData = JSON.parse(cleanedText); } else { throw geminiErr; }

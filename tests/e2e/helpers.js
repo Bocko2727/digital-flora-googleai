@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -18,7 +19,17 @@ export const plantsPaginatedFixture = JSON.parse(
 // touch the real Supabase project (data safety: CLAUDE.md §7 forbids writing
 // test data to production Supabase). GET /api/plants serves the fixture;
 // /api/config is neutered so the real Supabase Auth SDK never initializes.
+//
+// Each page also gets its own client IP. The whole suite talks to one
+// `node server.js` from 127.0.0.1, so without this every test shares one
+// static-asset rate-limit bucket (600 requests / 5 min, ~9 per page load)
+// and the last specs get a 429 page once the suite is big enough. server.js
+// trusts one proxy hop, so X-Forwarded-For sets req.ip. Rate limiting is not
+// what these specs test.
 export async function mockCatalogApi(page, { plants = plantsFixture } = {}) {
+  await page.setExtraHTTPHeaders({
+    'X-Forwarded-For': `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`,
+  });
   await page.route('**/api/config', (route) =>
     route.fulfill({ json: { supabaseUrl: null, supabasePublishableKey: null } })
   );

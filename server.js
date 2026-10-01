@@ -358,9 +358,10 @@ app.post('/api/plants/:id/photos', moderateLimiter, authenticateCatalogActor, re
 
 // Fallback for missing images: only ever resolves against the fixed
 // allowlisted image directories or the SSRF-safe remote fetch helper.
-// Never joins raw req.path onto __dirname.
-app.use(staticAssetLimiter, async (req, res, next) => {
-  if (!/\.(png|jpe?g|gif|svg|webp)$/i.test(req.path)) return next();
+// Never joins raw req.path onto __dirname. Mounted on image paths only: as a
+// path-less app.use() its limiter also counted "/" a second time and every
+// /health probe against the visitor's static-asset budget.
+app.get(/\.(png|jpe?g|gif|svg|webp)$/i, staticAssetLimiter, async (req, res) => {
   const filename = path.basename(req.path);
   const localPath = resolveSafeImagePath(filename);
   if (localPath) return res.sendFile(localPath);

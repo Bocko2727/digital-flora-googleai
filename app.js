@@ -812,7 +812,9 @@ document.addEventListener('error', (e) => {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Грешка при анализа на снимката.');
+        const uploadError = new Error(err.error || 'Грешка при анализа на снимката.');
+        uploadError.code = err.code;
+        throw uploadError;
       }
       const result = await res.json();
       const record = result.record;
@@ -886,6 +888,9 @@ document.addEventListener('error', (e) => {
       let succeeded = 0;
       const failedFiles = [];
       const noPhotoFiles = [];
+      // Server message for AI_OVERLOADED (retry later / add manually), shown
+      // once after the batch; other failures keep the generic file list.
+      let aiOverloadedMessage = '';
 
       for (let index = 0; index < total; index++) {
         const file = files[index];
@@ -899,6 +904,7 @@ document.addEventListener('error', (e) => {
           if (outcome && outcome.photoFailed) noPhotoFiles.push(file.name);
         } catch (err) {
           failedFiles.push(file.name);
+          if (err && err.code === 'AI_OVERLOADED') aiOverloadedMessage = err.message;
           console.error(`Грешка при обработка на "${file.name}":`, err);
         }
       }
@@ -911,6 +917,7 @@ document.addEventListener('error', (e) => {
         } else {
           const parts = [`⚠️ Обработени ${succeeded} от ${total}.`];
           if (failedFiles.length) parts.push(`Неуспешни: ${failedFiles.join(', ')}.`);
+          if (aiOverloadedMessage) parts.push(aiOverloadedMessage);
           if (noPhotoFiles.length) parts.push(`Добавени без снимка (качването в Storage се провали): ${noPhotoFiles.join(', ')}.`);
           status.innerText = parts.join(' ');
         }

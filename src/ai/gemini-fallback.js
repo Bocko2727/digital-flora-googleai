@@ -5,6 +5,17 @@ export function isGeminiOverloadedError(err) {
   return /"code"\s*:\s*503/.test(msg) || /UNAVAILABLE/.test(msg) || /high demand|overloaded/i.test(msg);
 }
 
+// Maps a failed /api/upload analysis to the response the client sees. An
+// overload that survived every fallback is a 503 AI_OVERLOADED whose message
+// points to retrying later or adding the plant manually (that path does not
+// use AI); any other failure stays a generic 502 AI_UNAVAILABLE.
+export function uploadAiErrorResponse(err) {
+  if (isGeminiOverloadedError(err)) {
+    return { status: 503, body: { error: 'Услугата за разпознаване на снимки е претоварена. Опитай отново след няколко минути или добави растението ръчно.', code: 'AI_OVERLOADED' } };
+  }
+  return { status: 502, body: { error: 'Анализът на снимката временно не е достъпен.', code: 'AI_UNAVAILABLE' } };
+}
+
 // Retries the first model on transient 503 errors with exponential backoff
 // (1s -> 2s), max `maxAttempts` attempts. If it is still overloaded, each
 // remaining model is tried once with no backoff, so a Vercel function pays at

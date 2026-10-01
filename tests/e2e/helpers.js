@@ -29,3 +29,31 @@ export async function mockCatalogApi(page, { plants = plantsFixture } = {}) {
     return route.continue();
   });
 }
+
+// Signed-in UI states without touching the real Supabase project:
+// /api/config points supabase-js at the project host, a fake unexpired
+// session is seeded into localStorage (supabase-js restores it without a
+// network call), every request to the Supabase host is answered locally with
+// a 503, and /api/auth/whoami is answered by the `whoami` handler. Returns
+// the Authorization headers whoami received.
+const SUPABASE_URL = 'https://sxuxtsbyqjaodyuqebux.supabase.co';
+const STORAGE_KEY = 'sb-sxuxtsbyqjaodyuqebux-auth-token';
+export const signedInUser = { id: 'b3c7a0de-5a4f-4a9c-8f7e-2d1c9e0f1a2b', email: 'editor@example.com', aud: 'authenticated', role: 'authenticated' };
+
+export async function openSignedIn(page, whoami) {
+  const whoamiAuthHeaders = [];
+  await page.route('**/api/config', (route) => route.fulfill({ json: { supabaseUrl: SUPABASE_URL, supabasePublishableKey: 'sb_publishable_e2e' } }));
+  await page.route('**/api/plants', (route) => (route.request().method() === 'GET' ? route.fulfill({ json: plantsFixture }) : route.abort()));
+  await page.route(`${SUPABASE_URL}/**`, (route) => route.fulfill({ status: 503, json: { message: 'e2e: no Supabase access' } }));
+  await page.route('**/api/auth/whoami', (route) => {
+    whoamiAuthHeaders.push(route.request().headers().authorization);
+    return whoami(route);
+  });
+  const session = {
+    access_token: 'e2e-access-token', token_type: 'bearer', expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'e2e-refresh-token', user: signedInUser,
+  };
+  await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [STORAGE_KEY, JSON.stringify(session)]);
+  await page.goto('/');
+  return whoamiAuthHeaders;
+}

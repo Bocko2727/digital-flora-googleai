@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockCatalogApi, plantsFixture } from './helpers.js';
+import { mockCatalogApi, openSignedIn, plantsFixture, signedInUser } from './helpers.js';
 
 // Behaviour introduced by PR #12 (catalog source notice, AI-labelled
 // confidence, honest empty-field fallbacks, visible upload failures, editor
@@ -14,6 +14,7 @@ const TINY_JPEG_BUFFER = Buffer.from(TINY_JPEG_BASE64, 'base64');
 
 const AI_CONFIDENCE = 'Вероятно (AI 92%)';
 const RISKS_FALLBACK = 'Няма данни — рисковете не са проверени.';
+const OVERLOAD_MESSAGE = 'Услугата за разпознаване на снимки е претоварена. Опитай отново след няколко минути или добави растението ръчно.';
 
 // A single AI-suggested plant with no risk data, so it is the only card and
 // opens at index 0.
@@ -205,6 +206,59 @@ test.describe('AI upload flow status', () => {
     await expect(status).toContainText('Неуспешни: anon.jpg');
     await expect(status).toContainText('Обработени 0 от 1');
     await expect(status).toBeVisible();
+    await expect(status).not.toContainText('претоварена');
     expect(createCalled).toBe(false);
+  });
+
+  test('AI overload (503 AI_OVERLOADED) shows the retry/manual hint and creates nothing', async ({ page }) => {
+    let createCalled = false;
+    await page.route('**/api/upload', (route) =>
+      route.fulfill({ status: 503, json: { error: OVERLOAD_MESSAGE, code: 'AI_OVERLOADED' } })
+    );
+    await page.route('**/api/plants', (route) => {
+      if (route.request().method() === 'POST') {
+        createCalled = true;
+        return route.fulfill({ status: 500, json: { error: 'should not be called' } });
+      }
+      return route.fallback();
+    });
+
+    await page.goto('/');
+    await expect(page.locator('.plant-card')).toHaveCount(plantsFixture.length);
+    await page.setInputFiles('#uploadInput', {
+      name: 'busy.jpg',
+      mimeType: 'image/jpeg',
+      buffer: TINY_JPEG_BUFFER,
+    });
+
+    const status = page.locator('#uploadStatus');
+    await expect(status).toContainText('Неуспешни: busy.jpg');
+    await expect(status).toContainText(OVERLOAD_MESSAGE);
+    await expect(status).toBeVisible();
+    expect(createCalled).toBe(false);
+  });
+});
+
+test.describe('AI upload flow status on a phone', () => {
+  test.use({ viewport: { width: 320, height: 640 } });
+
+  // The overload hint tells the editor to add the plant manually, so on a
+  // small phone the (persistent) status must not cover that button.
+  test('the AI overload hint leaves "Ново растение (ръчно)" clickable', async ({ page }) => {
+    await openSignedIn(page, (route) => route.fulfill({ json: { id: signedInUser.id, email: signedInUser.email, role: 'editor' } }));
+    await page.route('**/api/upload', (route) =>
+      route.fulfill({ status: 503, json: { error: OVERLOAD_MESSAGE, code: 'AI_OVERLOADED' } })
+    );
+    await expect(page.locator('#writeActions')).toBeVisible();
+
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button', { name: /Качи снимка за AI анализ/ }).click(),
+    ]);
+    await chooser.setFiles({ name: 'phone.jpg', mimeType: 'image/jpeg', buffer: TINY_JPEG_BUFFER });
+    await expect(page.locator('#uploadStatus')).toContainText(OVERLOAD_MESSAGE);
+
+    await page.getByRole('button', { name: /Ново растение \(ръчно\)/ }).click({ timeout: 5000 });
+    await expect(page.locator('#createPlantPanel')).toHaveClass(/open/);
   });
 });
